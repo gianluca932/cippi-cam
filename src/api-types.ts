@@ -4,10 +4,14 @@
 export type UccellinoApi = { nome: string; colore: string };
 
 export type EventoApi = {
+  id: number;
   nome: string;
   colore: string;
-  azione: string;
-  confidenza: number;
+  azione: string; // quella effettiva: la correzione umana se c'è, altrimenti il modello
+  confidenza: number; // 1 se controllato da una persona
+  azione_modello: string; // cosa aveva detto il modello
+  confidenza_modello: number;
+  azione_umana: string | null; // null = non controllato
   descrizione: string;
   posizione: string;
   postura: string;

@@ -5,7 +5,17 @@ import { z } from "zod";
 import { streamSSE } from "hono/streaming";
 import type { ChatApi, EventoChat } from "./api-types.js";
 import { chiediAllAgente } from "./agente.js";
-import { elencoGiorni, elencoUccellini, fotoDelGiorno, percorsoFoto } from "./db.js";
+import {
+  correggiEvento,
+  elencoGiorni,
+  elencoUccellini,
+  eventiPerEmbedding,
+  fotoDelGiorno,
+  percorsoFoto,
+  salvaEmbedding,
+} from "./db.js";
+import { embed, textForEmbedding } from "./ollama.js";
+import { AZIONI, type Azione } from "./schema.js";
 
 const PORT = Number(process.env.PORT ?? 3001);
 const app = new Hono().basePath("/api");
@@ -26,6 +36,34 @@ app.get("/foto/:id/immagine", async (c) => {
   c.header("Content-Type", "image/jpeg");
   c.header("Cache-Control", "public, max-age=86400");
   return c.body(await readFile(percorso));
+});
+
+// Correzioni dalla galleria. La previsione del modello resta: la correzione si salva accanto,
+// e l'embedding si ricalcola perché il suo testo contiene l'azione.
+async function aggiornaEvento(id: number, azione: Azione | null) {
+  if (!(await correggiEvento(id, azione))) return false;
+  const [evento] = await eventiPerEmbedding(id);
+  const [embedding] = await embed([textForEmbedding(evento, evento.scena)], "documento");
+  await salvaEmbedding(id, embedding);
+  return true;
+}
+
+const Correzione = z.object({ azione: z.enum(AZIONI) });
+
+// Corregge o conferma (stessa azione del modello) l'azione di un evento.
+app.patch("/eventi/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+  const body = Correzione.safeParse(await c.req.json().catch(() => null));
+  if (!Number.isInteger(id) || !body.success) return c.json({ errore: `Serve { azione: ${AZIONI.join(" | ")} }` }, 400);
+  if (!(await aggiornaEvento(id, body.data.azione))) return c.notFound();
+  return c.json({ ok: true });
+});
+
+// Annulla la correzione: torna valida la previsione del modello.
+app.delete("/eventi/:id/correzione", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id) || !(await aggiornaEvento(id, null))) return c.notFound();
+  return c.json({ ok: true });
 });
 
 // La chat: l'agente sceglie i tool (SQL o ricerca semantica) e risponde.

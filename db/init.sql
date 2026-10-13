@@ -44,3 +44,5 @@ CREATE TABLE eventi (
 
 CREATE INDEX foto_ora_idx ON foto (ora);
 CREATE INDEX eventi_embedding_testo_idx ON eventi USING hnsw (embedding_testo vector_cosine_ops);
+
+-- Le migrazioni in db/migrazioni/ si applicano anche ai database nuovi: npm run db:migra

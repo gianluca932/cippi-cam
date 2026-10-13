@@ -13,7 +13,8 @@
     "server": "tsx watch src/server.ts",
     "valuta": "tsx src/valuta.ts",
     "scatta": "caffeinate -di tsx src/scatta.ts",
-    "chiedi": "tsx src/chiedi.ts"
+    "chiedi": "tsx src/chiedi.ts",
+    "db:migra": "for f in db/migrazioni/*.sql; do echo \"→ $f\"; docker compose exec -T db psql -q -v ON_ERROR_STOP=1 -U cippi cippi < \"$f\" || exit 1; done"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.5",

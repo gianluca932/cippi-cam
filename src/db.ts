@@ -3,6 +3,7 @@ import type { FotoApi, GiornoApi, UccellinoApi } from "./api-types.js";
 import {
   MIN_CONFIDENCE,
   type AnalisiFoto,
+  type Azione,
   type EventoUccellino,
 } from "./schema.js";
 import { nomeDaColore, UCCELLINI } from "./uccellini.js";
@@ -111,7 +112,7 @@ export async function cercaSimili(
   const { rows } = await pool.query<RisultatoRicerca>(
     `SELECT e.foto_id, f.ora, e.uccellino, e.azione, e.confidenza, e.descrizione,
             1 - (e.embedding_testo <=> $1) AS similarita
-     FROM eventi e JOIN foto f ON f.id = e.foto_id
+     FROM eventi_effettivi e JOIN foto f ON f.id = e.foto_id
      WHERE ($3::text IS NULL OR e.uccellino = $3)
        AND ($4::date IS NULL OR (f.ora AT TIME ZONE $5)::date = $4::date)
      ORDER BY e.embedding_testo <=> $1
@@ -133,7 +134,7 @@ export type EventoDelGiorno = {
 export async function eventiDelGiorno(giorno: string, uccellino?: string): Promise<EventoDelGiorno[]> {
   const { rows } = await pool.query<EventoDelGiorno>(
     `SELECT f.ora, e.uccellino, e.azione, e.confidenza, e.descrizione
-     FROM eventi e JOIN foto f ON f.id = e.foto_id
+     FROM eventi_effettivi e JOIN foto f ON f.id = e.foto_id
      WHERE (f.ora AT TIME ZONE $1)::date = $2::date
        AND ($3::text IS NULL OR e.uccellino = $3)
      ORDER BY f.ora, e.uccellino`,
@@ -169,7 +170,7 @@ export async function elencoGiorni(): Promise<GiornoApi[]> {
             COUNT(e.id) FILTER (WHERE e.confidenza >= $2 AND e.azione <> 'non_visibile')::int AS eventi_affidabili,
             COALESCE(array_agg(e.azione ORDER BY f.ora)
               FILTER (WHERE e.confidenza >= $2 AND e.azione <> 'non_visibile'), '{}') AS azioni
-     FROM foto f LEFT JOIN eventi e ON e.foto_id = f.id
+     FROM foto f LEFT JOIN eventi_effettivi e ON e.foto_id = f.id
      GROUP BY 1 ORDER BY 1 DESC`,
     [FUSO, MIN_CONFIDENCE],
   );
@@ -180,12 +181,14 @@ export async function fotoDelGiorno(giorno: string): Promise<FotoApi[]> {
   const { rows } = await pool.query<FotoApi>(
     `SELECT f.id, f.ora, f.scena, f.acqua, f.cibo, f.note_gabbia,
             json_agg(json_build_object(
-              'nome', e.uccellino, 'colore', u.colore, 'azione', e.azione, 'confidenza', e.confidenza,
+              'id', e.id, 'nome', e.uccellino, 'colore', u.colore, 'azione', e.azione, 'confidenza', e.confidenza,
+              'azione_modello', e.azione_modello, 'confidenza_modello', e.confidenza_modello,
+              'azione_umana', e.azione_umana,
               'descrizione', e.descrizione, 'posizione', e.posizione, 'postura', e.postura,
               'oggetti_vicini', e.oggetti_vicini
             ) ORDER BY e.uccellino) AS eventi
      FROM foto f
-     JOIN eventi e ON e.foto_id = f.id
+     JOIN eventi_effettivi e ON e.foto_id = f.id
      JOIN uccellini u ON u.nome = e.uccellino
      WHERE (f.ora AT TIME ZONE $1)::date = $2::date
      GROUP BY f.id ORDER BY f.ora DESC`,
@@ -202,8 +205,9 @@ export async function percorsoFoto(id: number): Promise<string | undefined> {
   return rows[0]?.percorso;
 }
 
-// Tutti gli eventi con i campi da cui si ricostruisce il testo dell'embedding.
-export async function eventiPerEmbedding() {
+// Gli eventi (tutti, o uno solo) con i campi da cui si ricostruisce il testo dell'embedding.
+// L'azione è quella effettiva: se una persona l'ha corretta, l'embedding deve dire quella.
+export async function eventiPerEmbedding(id?: number) {
   const { rows } = await pool.query<
     EventoUccellino & {
       id: number;
@@ -214,8 +218,46 @@ export async function eventiPerEmbedding() {
   >(
     `SELECT e.id, f.percorso, f.scena, e.uccellino, u.colore, e.azione, e.confidenza,
             e.descrizione, e.posizione, e.oggetti_vicini, e.postura
-     FROM eventi e JOIN foto f ON f.id = e.foto_id JOIN uccellini u ON u.nome = e.uccellino
+     FROM eventi_effettivi e JOIN foto f ON f.id = e.foto_id JOIN uccellini u ON u.nome = e.uccellino
+     WHERE ($1::int IS NULL OR e.id = $1)
      ORDER BY e.id`,
+    [id ?? null],
+  );
+  return rows;
+}
+
+// Correzione (o conferma) umana di un evento; azione = null la annulla.
+// Prima si aggiorna l'azione, poi chi chiama ricalcola l'embedding e lo salva con salvaEmbedding.
+export async function correggiEvento(id: number, azione: Azione | null): Promise<boolean> {
+  const { rowCount } = await pool.query(
+    `UPDATE eventi
+     SET azione_umana = $2, controllato_il = CASE WHEN $2::text IS NULL THEN NULL ELSE now() END
+     WHERE id = $1`,
+    [id, azione],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+export async function salvaEmbedding(id: number, embedding: number[]) {
+  await pool.query("UPDATE eventi SET embedding_testo = $2 WHERE id = $1", [id, toVector(embedding)]);
+}
+
+export type Etichetta = {
+  percorso: string;
+  uccellino: string;
+  azione_umana: Azione;
+  azione_modello: Azione;
+  confidenza_modello: number;
+  modello: string;
+};
+
+// Le correzioni e conferme fatte in galleria: sono le etichette per valutare il modello.
+export async function etichetteUmane(): Promise<Etichetta[]> {
+  const { rows } = await pool.query<Etichetta>(
+    `SELECT f.percorso, e.uccellino, e.azione_umana, e.azione_modello, e.confidenza_modello, f.modello
+     FROM eventi_effettivi e JOIN foto f ON f.id = e.foto_id
+     WHERE e.azione_umana IS NOT NULL
+     ORDER BY f.ora, e.uccellino`,
   );
   return rows;
 }

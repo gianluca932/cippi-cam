@@ -16,6 +16,8 @@ export const EMOJI: Record<string, string> = {
   non_visibile: "❓",
 };
 
+export const AZIONI = Object.keys(EMOJI); // come AZIONI in src/schema.ts
+
 // Colori dei pallini: dal nome del colore in config/uccellini.json.
 export const COLORE_CSS: Record<string, string> = {
   giallo: "#f2c94c",
@@ -53,6 +55,18 @@ export async function chiediAlDiario(domanda: string, storia: TurnoChat[] = []):
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   return res.json();
 }
+
+// Correzioni dalla galleria.
+async function invia(method: string, path: string, body?: unknown) {
+  const res = await fetch(`/api${path}`, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+}
+export const correggiAzione = (id: number, azione: string) => invia("PATCH", `/eventi/${id}`, { azione });
+export const annullaCorrezione = (id: number) => invia("DELETE", `/eventi/${id}/correzione`);
 
 // Chat in streaming: legge gli eventi SSE man mano che il server li manda.
 // EventSource del browser funziona solo in GET, quindi leggiamo lo stream a mano con fetch.
