@@ -10,7 +10,9 @@
     "cerca": "tsx src/cerca.ts",
     "confronta-embedding": "tsx src/confronta-embedding.ts",
     "importa": "tsx src/importa.ts",
-    "server": "tsx watch src/server.ts"
+    "server": "tsx watch src/server.ts",
+    "valuta": "tsx src/valuta.ts",
+    "scatta": "caffeinate -di tsx src/scatta.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.5",

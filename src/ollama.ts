@@ -17,13 +17,21 @@ Guarda con attenzione tutta la gabbia, anche dietro posatoi, sbarre e giocattoli
 - uccellini: SEMPRE ${COLORI.length} elementi, uno per colore (${COLORI.join(", ")}). Per ognuno, in quest'ordine:
   - colore: il colore del pappagallino che stai descrivendo
   - posizione: dove si trova nella gabbia (es. "sul posatoio in alto a destra")
-  - postura: com'è il corpo (piume, ali, occhi, testa)
+  - postura: com'è il corpo, e soprattutto dove sono testa e becco (piume, ali, occhi)
   - oggetti_vicini: lista degli oggetti visibili vicino a lui (es. ["mangiatoia", "pallina"])
   - descrizione: una frase breve in italiano su cosa sta facendo
   - azione: una tra mangia, beve, dorme, si_pulisce, gioca, vola, riposa, non_visibile
   - confidenza: numero tra 0 e 1 (quanto sei sicuro dell'azione; abbassala se è coperto o sfocato)
-Usa "non_visibile" solo se non riesci a vederne nessuna parte; se è parzialmente coperto, descrivi cosa fa e abbassa la confidenza.
-Usa "vola" solo se ha le ali aperte e non tocca nessun appoggio.`;
+Come riconoscere le azioni in una foto ferma (guarda soprattutto DOVE è la testa e il becco):
+  - mangia: testa abbassata dentro o sopra la mangiatoia, o becco su semi, miglio, verdura
+  - beve: becco sull'abbeveratoio o sulla ciotola dell'acqua
+  - si_pulisce: testa girata verso la schiena, il petto o un'ala, becco tra le piume; spesso piume un po' sollevate
+  - dorme: occhi chiusi, testa affondata nelle piume o girata all'indietro, corpo gonfio e immobile
+  - gioca: becco o zampe su un giocattolo (palline, campanelli, specchio, corde)
+  - vola: ali aperte e nessun appoggio
+  - riposa: fermo su un posatoio, testa dritta, occhi aperti, becco libero. Usalo SOLO se nessun'altra azione è plausibile.
+Prima di scegliere, controlla se la testa è vicino a mangiatoia, abbeveratoio, piume o giocattoli.
+Usa "non_visibile" solo se non riesci a vederne nessuna parte; se è parzialmente coperto, descrivi cosa fa e abbassa la confidenza.`;
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${OLLAMA_URL}${path}`, {
