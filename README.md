@@ -1,39 +1,376 @@
-# cippi-cam
+# Cippi Cam
 
-Diario di Cippi e Sky (due pappagallini): modello di visione → eventi validati con Zod → Postgres/pgvector → agente.
+**Un diario automatico di due pappagallini, Cippi e Sky, costruito con un modello di visione, output strutturato validato con Zod, Postgres + pgvector e un agente con tool. Tutto gira in locale.**
 
-Tutto gira in locale: Ollama per i modelli, Postgres in Docker.
+Una webcam scatta una foto al minuto. Un modello di visione locale guarda la foto, dice cosa sta facendo ciascun uccellino (mangia, beve, si pulisce, gioca, riposa…) e com'è la gabbia (acqua, cibo, pulizia). Il risultato viene validato, salvato in Postgres con un embedding per la ricerca semantica, e si può interrogare in chat: *"quante volte ha mangiato Cippi oggi?"*, *"quando Sky era nascosto dietro il posatoio?"*, *"c'è abbastanza acqua?"*.
+
+Il progetto è nato come esercizio pratico di AI engineering. L'obiettivo non era una demo che funziona una volta, ma un sistema **misurabile**: con un set di valutazione, guardrail nel codice e numeri onesti su dove sbaglia.
+
+---
+
+## Indice
+
+- [Cosa fa](#cosa-fa)
+- [Architettura](#architettura)
+- [Le scelte tecniche](#le-scelte-tecniche)
+  - [1. Visione con output strutturato](#1-visione-con-output-strutturato)
+  - [2. Il database: SQL e vettori nello stesso posto](#2-il-database-sql-e-vettori-nello-stesso-posto)
+  - [3. L'agente della chat](#3-lagente-della-chat)
+  - [4. Streaming con Server-Sent Events](#4-streaming-con-server-sent-events)
+  - [5. Registrazione live e coda di analisi](#5-registrazione-live-e-coda-di-analisi)
+  - [6. Human-in-the-loop: correzioni dalla galleria](#6-human-in-the-loop-correzioni-dalla-galleria)
+- [Valutazione: i numeri](#valutazione-i-numeri)
+- [Lezioni imparate](#lezioni-imparate)
+- [Stack](#stack)
+- [Avvio](#avvio)
+- [Comandi](#comandi)
+- [Struttura del progetto](#struttura-del-progetto)
+- [Limiti noti](#limiti-noti)
+- [Roadmap: verso AWS](#roadmap-verso-aws)
+
+---
+
+## Cosa fa
+
+| Pagina | Cosa c'è |
+|---|---|
+| **Oggi** | Galleria delle foto del giorno: per ogni uccellino azione, oggetto con cui interagisce e confidenza; acqua, cibo e pulizia della gabbia. Accanto, la chat con l'agente. |
+| **Live** | Il video della webcam in diretta, il pulsante **Avvia registrazione** e gli scatti che compaiono man mano, con lo stato dell'analisi (in coda → il modello sta guardando → risultato). |
+| **Archivio** | I giorni passati, con il riepilogo delle azioni, e la galleria di ciascun giorno. |
+| **Configurazione** | Uccellini, modelli, database, storage e rete, in versione locale e (in preparazione) AWS. |
+
+Funzioni trasversali:
+
+- **Correzione in galleria**: confermi ✓ o correggi l'azione di un uccellino. La previsione del modello resta salvata, la tua correzione diventa la verità per galleria e agente, e un'etichetta per la valutazione. Sulla foto, un'etichetta verde o rossa mostra se il modello aveva ragione.
+- **Chat in streaming**: mentre l'agente lavora vedi in grigio i passaggi (tool chiamati, dati ricevuti, eventuale ragionamento), poi la risposta che si scrive parola per parola.
+- **Foto grande** al click, con descrizioni e note sulla gabbia.
+
+---
+
+## Architettura
+
+```mermaid
+flowchart LR
+    subgraph Acquisizione
+        W[Webcam] -->|imagesnap ogni 60s| F[photos/]
+        I[iPhone HEIC] --> F
+    end
+
+    subgraph Analisi["Analisi (coda, una foto alla volta)"]
+        F --> C[sips: JPG 1024px<br/>+ ora di scatto EXIF]
+        C --> V[qwen3.5:9b<br/>visione]
+        V -->|JSON vincolato<br/>dallo schema| Z{Zod}
+        Z -->|valido| E[nomic-embed-text<br/>embedding]
+        Z -->|non valido| X[scartata]
+    end
+
+    subgraph Dati["Postgres 17 + pgvector"]
+        E --> DB[(foto · eventi<br/>uccellini)]
+        DB --- VW[[vista eventi_effettivi]]
+    end
+
+    subgraph App
+        API[API Hono] --> VW
+        API -->|SSE| WEB[React + Vite]
+        WEB -->|correzioni| API
+        AG[Agente<br/>4 tool] --> VW
+        API --> AG
+    end
+```
+
+Il modello di visione e l'agente sono **lo stesso modello** (`qwen3.5:9b` in Ollama): con 16 GB di RAM conviene tenerne in memoria uno solo.
+
+---
+
+## Le scelte tecniche
+
+### 1. Visione con output strutturato
+
+**Lo schema Zod è il contratto** tra il modello e il resto del codice ([src/schema.ts](src/schema.ts)):
+
+```ts
+export const EventoUccellino = z.object({
+  colore: z.enum(COLORI),                 // il modello dice il colore, non il nome
+  posizione: z.string().min(1).max(50),
+  postura: z.string().min(1).max(60),
+  con_cosa: z.string().min(1).max(30),    // "campanellino", "mangiatoia", "niente"
+  oggetti_vicini: z.array(z.string().max(25)).max(3),
+  descrizione: z.string().min(1).max(120),
+  azione: z.enum(AZIONI),                 // mangia | beve | dorme | si_pulisce | gioca | vola | riposa | non_visibile
+  confidenza: z.number().min(0).max(1),
+});
+```
+
+Lo stesso schema serve a tre cose:
+
+1. **Vincola il modello mentre genera.** `z.toJSONSchema()` diventa il parametro `format` di Ollama, che lo trasforma in una grammatica: a ogni token vengono scartati quelli che violerebbero lo schema. Il modello non *può* scrivere `"azione": "balla"`, né superare i `max()` di lunghezza.
+2. **Controlla la risposta dopo.** `safeParse` ricontrolla tutto, comprese le regole che nella grammatica non entrano (un `.refine()` vieta due uccellini con lo stesso colore).
+3. **Dà i tipi a TypeScript** senza riscriverli.
+
+Tre dettagli che hanno fatto la differenza:
+
+- **Il nome lo assegna il codice, non il modello.** Nelle prime versioni il modello vedeva bene i colori ma scambiava Cippi e Sky. Ora risponde solo `"giallo"` o `"celeste"`, e [config/uccellini.json](config/uccellini.json) traduce in nome in modo deterministico. Per aggiungere un uccellino basta una riga nel JSON.
+- **Prima osserva, poi classifica.** Con l'output strutturato i campi vengono generati nell'ordine dello schema, quindi posizione, postura, oggetto e descrizione vengono *prima* di azione e confidenza. Quello che il modello ha appena scritto entra nel contesto e orienta la scelta dell'azione.
+- **Limiti di lunghezza nella grammatica.** I `.max()` impediscono al modello di dilungarsi: circa il 14% di token in meno a foto, e quindi meno tempo, con la garanzia che non può sforare.
+
+### 2. Il database: SQL e vettori nello stesso posto
+
+Postgres 17 con l'estensione **pgvector**, in Docker ([db/init.sql](db/init.sql), [db/migrazioni/](db/migrazioni/)):
+
+```
+uccellini (nome, colore)
+foto      (id, ora, percorso, modello, scena, acqua, cibo, pulizia, note_gabbia, embedding_immagine)
+eventi    (id, foto_id, uccellino, azione, confidenza, descrizione, posizione, postura,
+           con_cosa, oggetti_vicini, embedding_testo vector(768), azione_umana, controllato_il)
+```
+
+- **Una riga per uccellino per foto**, così le domande sono SQL normale (`COUNT`, `GROUP BY`, filtri per data e nome).
+- **`embedding_testo`** con indice HNSW per la ricerca semantica sulle descrizioni (*"vicino allo specchio"*, *"nascosto"*).
+- **`embedding_immagine`** è già prevista (CLIP), per confrontare la ricerca sulle descrizioni con quella direttamente sulle immagini.
+- **Ricerca ibrida**: similarità coseno di pgvector più filtri SQL nella stessa query (`WHERE uccellino = 'Sky' ORDER BY embedding <=> $1`).
+- **Vista `eventi_effettivi`**: definisce in un solo punto "qual è la verità" (la correzione umana se c'è, altrimenti il modello). Tutte le letture passano da lì.
+- **Episodi**: con una foto al minuto, "Cippi mangia per 5 minuti" sono 5 eventi ma **un** episodio. [src/episodi.ts](src/episodi.ts) unisce gli eventi consecutivi, così i conteggi hanno senso.
+- **Migrazioni rilanciabili** (`npm run db:migra`): ogni file in `db/migrazioni/` si può applicare più volte senza errori.
+
+Perché Postgres e non un vector DB dedicato: i dati sono soprattutto **strutturati** (azioni, orari, nomi), e servono sia filtri esatti sia similarità. Tenerli nella stessa tabella permette query ibride senza sincronizzare due sistemi. Su AWS diventa RDS, che supporta pgvector.
+
+### 3. L'agente della chat
+
+[src/agente.ts](src/agente.ts): il modello riceve la domanda e quattro tool, decide quali chiamare, legge i risultati e risponde.
+
+| Tool | Sotto | Per domande tipo |
+|---|---|---|
+| `eventi_del_giorno` | SQL + episodi | "cosa ha fatto Sky oggi?" |
+| `conta_eventi` | SQL + episodi | "quante volte ha mangiato Cippi?" |
+| `cerca_momenti` | pgvector + filtri SQL | "quando Sky era nascosto?" |
+| `stato_gabbia` | SQL, con riassunto già calcolato | "c'è abbastanza acqua?" |
+
+I guardrail stanno **nel codice, non solo nel prompt**:
+
+- **Argomenti dei tool validati con Zod** prima di toccare il database. Se il modello inventa un uccellino o passa una data sbagliata, riceve l'errore e si corregge (succede davvero, ed è nei log).
+- **Risposta con numeri senza aver usato un tool = scartata.** Il modello a volte risponde a memoria inventando orari. Il codice butta la risposta e riprova con il **ragionamento acceso** (`think: true`), solo per quella domanda. Se fallisce di nuovo, l'agente dice che non è riuscito a consultare il diario invece di inventare.
+- **Riassunti già calcolati** nei tool: un modello piccolo sbaglia se deve dedurre "l'acqua è sufficiente" da una lista di 30 valori, quindi il tool gli passa direttamente `ultimo_livello_visto`.
+
+### 4. Streaming con Server-Sent Events
+
+La chat usa **SSE** su `POST /api/chat/stream` ([src/server.ts](src/server.ts)):
+
+```
+Ollama ──NDJSON, token per token──► agente ──SSE──► browser
+```
+
+- I pezzi di **ragionamento** vanno subito al browser.
+- I pezzi di **risposta** vanno in streaming **solo dopo che è stato usato un tool**. Una risposta senza tool resta trattenuta finché il guardrail non l'ha controllata, così una risposta inventata non compare mai, nemmeno per un istante.
+- Lato React, ogni evento passa da un **reducer puro** (`applica(messaggio, evento)`) dentro un `setState` funzionale. È immutabile e quindi sicuro anche con la doppia invocazione di StrictMode.
+
+La pagina Live usa invece `EventSource` nativo su `GET /api/scatti/stream`, che si riconnette da solo se il server si riavvia.
+
+### 5. Registrazione live e coda di analisi
+
+[src/registrazione.ts](src/registrazione.ts): dalla pagina Live si avvia una registrazione che gira **sul server**, non nel browser (una scheda in background rallenterebbe i timer).
+
+```
+ogni 60s:  scatta → photos/cam_….jpg ──► coda ──► lavoratore (una foto alla volta)
+                                                   converti → modello → Zod → embedding → DB
+```
+
+- **Lo scatto non aspetta mai l'analisi**: se il modello è lento, la coda si allunga e poi recupera.
+- `caffeinate` tiene sveglio il Mac, legato al processo del server.
+- Scatto, analisi e coda sono moduli separati ([src/webcam.ts](src/webcam.ts), [src/importazione.ts](src/importazione.ts)) che corrispondono uno a uno ai pezzi della versione AWS: S3, SQS, Lambda.
+
+### 6. Human-in-the-loop: correzioni dalla galleria
+
+- La **previsione del modello non viene mai sovrascritta**: la correzione va in `azione_umana`, accanto.
+- **Confermare** conta quanto correggere: senza conferme il set di valutazione conterrebbe solo errori.
+- Correggere aggiorna subito galleria e agente (tramite la vista) e **ricalcola l'embedding**, il cui testo contiene l'azione.
+- Le correzioni diventano **etichette** per `npm run valuta`.
+
+---
+
+## Valutazione: i numeri
+
+Ogni modifica a prompt o modello si misura con [src/valuta.ts](src/valuta.ts) sulle foto etichettate a mano (dal file [eval/classificazione.json](eval/classificazione.json) e dalle correzioni in galleria).
+
+**Previsioni salvate contro le etichette** (`npm run valuta -- --salvate`, 22 etichette):
+
+| | Risultato |
+|---|---|
+| Accuratezza complessiva | **68%** (15/22) |
+| "riposa" riconosciuto | 75% (12/16) |
+| "mangia" riconosciuto | 50% (3/6) |
+| Con confidenza ≥ 0.6 | 71% giusti |
+
+**Esperimenti sul classificatore** (stesso set di 12 foto e 24 etichette):
+
+| Variante | Accuratezza | Token a foto | Note |
+|---|---|---|---|
+| Prompt con indizi visivi (testa, becco) | **63%** | 424 | riferimento |
+| Prompt con campi brevi + esempi | 38% | 363 | il modello **copia gli esempi** del prompt (vedi sotto) |
+| `qwen3-vl:8b` al posto di `qwen3.5:9b` | peggiore | ~4000 | loop di ripetizione, ~8× più lento |
+| Risoluzione 1536px invece di 1024px | invariata | — | più lento, nessun guadagno |
+
+**Modelli di embedding** sulla ricerca semantica ([eval/ricerca.json](eval/ricerca.json), `npm run confronta-embedding`):
+
+| Modello | hit@1 | MRR | Tempo |
+|---|---|---|---|
+| **nomic-embed-text** (scelto) | 3/4 | 0.88 | 0.2s |
+| bge-m3 | 3/4 | 0.88 | 1.5–7s |
+| qwen3-embedding:0.6b | 2/4 | 0.75 | 5.5s |
+
+**Agente** (`qwen3.5:9b`, 5 domande di prova): tool corretto 5/5, nessuna risposta inventata mostrata. Circa 10–20 secondi per le domande dirette, circa 45 secondi quando il guardrail fa riprovare con il ragionamento.
+
+---
+
+## Lezioni imparate
+
+- **La confidenza dichiarata dal modello non è affidabile.** Ha detto "Sky non visibile" con 0.95, e Sky c'era. La confidenza è un numero che il modello *scrive*, non una probabilità.
+- **Un esempio nel prompt diventa una risposta.** Mettere "becco tra le piume dell'ala" come esempio di postura ha fatto crollare l'accuratezza dal 63% al 38%: il modello lo copiava anche quando non c'entrava, e la postura copiata lo spingeva verso "si pulisce".
+- **Il prompt di un modello piccolo è fragile.** Aggiungere *una* regola ("non usare markdown") ha fatto smettere l'agente di usare i tool: inventava orari. Da lì la scelta di mettere le difese nel codice (validazione, rifiuto delle risposte senza tool) e di gestire il markdown nell'interfaccia.
+- **I modelli "thinking" vanno scelti con attenzione.** `qwen3:4b` ha il ragionamento sempre acceso: circa 600 token per decidere di chiamare un tool, quindi 45–110 secondi a domanda. Come agente funziona meglio un modello in cui il ragionamento si spegne, e si accende solo quando serve.
+- **Le foto contano più del modello.** Uccellini dietro le sbarre, con la testa coperta dalla mangiatoia, sono ambigui anche per un umano. Avvicinare la webcam ha migliorato i risultati più di qualsiasi modifica al prompt.
+- **Misurare prima di cambiare.** Senza `valuta` il prompt "migliorato" sarebbe finito in produzione con metà dell'accuratezza.
+
+---
+
+## Stack
+
+| Livello | Tecnologia |
+|---|---|
+| Modelli | [Ollama](https://ollama.com) · `qwen3.5:9b` (visione + agente) · `nomic-embed-text` (embedding) |
+| Validazione | [Zod 4](https://zod.dev): schema → JSON Schema → grammatica del modello |
+| Database | Postgres 17 + [pgvector](https://github.com/pgvector/pgvector) (HNSW) in Docker |
+| Backend | Node 20 · TypeScript · [Hono](https://hono.dev) · SSE |
+| Frontend | React 19 · Vite · React Router 7 |
+| Acquisizione | `imagesnap` (webcam) · `sips` (HEIC → JPG) · `exifr` (ora di scatto) |
+
+---
 
 ## Avvio
 
+Requisiti: macOS (per `imagesnap`, `sips`, `caffeinate`), Node 20+, Docker, [Ollama](https://ollama.com).
+
 ```bash
+# dipendenze
 npm install && (cd web && npm install)
-ollama pull qwen3.5:9b && ollama pull nomic-embed-text
-npm run db:up            # Postgres 17 + pgvector
-npm run db:migra         # applica db/migrazioni/ (si può rilanciare)
+brew install imagesnap
+
+# modelli
+ollama pull qwen3.5:9b
+ollama pull nomic-embed-text
+
+# database (la prima volta)
+npm run db:up        # Postgres 17 + pgvector
+npm run db:migra     # applica db/migrazioni/ (si può rilanciare)
+
+# tutto insieme: Postgres + API + interfaccia
+npm run dev
 ```
+
+`npm run dev` ([scripts/dev.mjs](scripts/dev.mjs)) accende Postgres se è spento, avvia API e interfaccia con l'output prefissato (`[api]`, `[web]`) e con **Ctrl+C** ferma tutto. Poi apri **http://localhost:5173**.
+
+Gli uccellini si configurano in [config/uccellini.json](config/uccellini.json):
+
+```json
+[
+  { "nome": "Cippi", "colore": "giallo" },
+  { "nome": "Sky", "colore": "celeste" }
+]
+```
+
+---
 
 ## Comandi
 
 | Comando | Cosa fa |
 |---|---|
+| `npm run dev` | Postgres + API + interfaccia insieme; Ctrl+C ferma tutto |
+| `npm run server` | solo l'API su `localhost:3001/api` (in watch: per registrazioni lunghe usa `npx tsx src/server.ts`) |
+| `cd web && npm run dev` | solo l'interfaccia su `localhost:5173` |
 | `npm run importa` | converte le foto nuove di `photos/` (anche HEIC), legge l'ora di scatto, classifica e salva |
+| `npm run importa -- photos/X.HEIC` | importa solo i file indicati (anche `--lista lista.txt`, una foto per riga) |
+| `npm run scatta -- --ogni 60 --durata 60` | foto dalla webcam in `photos/` (lo stesso si fa dalla pagina Live) |
 | `npm run classify -- data/foto/X.jpg --dry-run` | analizza una foto senza salvarla |
-| `npm run chiedi -- "quante volte ha mangiato Cippi?"` | chiede all'agente da terminale |
+| `npm run chiedi -- "quante volte ha mangiato Cippi?"` | chiede all'agente da terminale, con la traccia dei tool |
 | `npm run cerca -- "Sky nascosto"` | ricerca semantica sul diario |
-| `npm run scatta -- --ogni 20 --durata 60` | foto dalla webcam in `photos/` |
-| `npm run valuta` | riclassifica le foto etichettate (file + galleria) e misura l'accuratezza |
-| `npm run valuta -- --salvate` | matrice di confusione: previsioni salvate vs correzioni in galleria, senza modello |
+| `npm run valuta` | riclassifica le foto etichettate e misura l'accuratezza (`--foto NOME`, `--lato 1536`) |
+| `npm run valuta -- --salvate` | matrice di confusione delle previsioni salvate, senza chiamare il modello |
 | `npm run confronta-embedding -- nomic-embed-text bge-m3` | confronta modelli di embedding su `eval/ricerca.json` |
-| `npm run server` | API su http://localhost:3001/api |
-| `cd web && npm run dev` | interfaccia su http://localhost:5173 |
-| `npm run db:psql` | console SQL |
+| `npm run db:up` / `db:migra` / `db:psql` | avvia Postgres, applica le migrazioni, apre la console SQL |
 
-## Come funziona
+Variabili d'ambiente utili: `VISION_MODEL`, `AGENT_MODEL`, `EMBED_MODEL`, `OLLAMA_URL`, `DATABASE_URL`, `DEBUG_AGENTE=1` (token e tempi di ogni chiamata dell'agente).
 
-- `config/uccellini.json`: chi vive nella gabbia. Il modello riconosce il **colore**, il nome lo assegna il codice.
-- `src/schema.ts`: il contratto Zod. I campi descrittivi vengono prima di azione e confidenza, così il modello osserva prima di classificare.
-- `db/init.sql`: `foto` (con stato di acqua e cibo) → `eventi` (uno per uccellino, con `embedding_testo`).
-- Gli eventi sotto confidenza 0.6 si salvano ma vengono mostrati come incerti.
-- Correzioni in galleria: `azione_umana` accanto alla previsione del modello (che non si tocca); la vista `eventi_effettivi` dà l'azione giusta a galleria e agente, e l'embedding si ricalcola.
-- `src/agente.ts`: l'agente della chat. Sceglie tra 4 tool (eventi, conteggi, ricerca semantica, gabbia), gli argomenti passano da Zod. Se risponde con numeri senza aver usato tool, la risposta viene scartata e riprova con il ragionamento acceso.
+---
+
+## Struttura del progetto
+
+```
+config/uccellini.json      chi vive nella gabbia (nome ↔ colore)
+db/
+  init.sql                 schema iniziale
+  migrazioni/              correzioni umane, dettagli (con_cosa, pulizia), vista eventi_effettivi
+eval/
+  classificazione.json     etichette a mano per valutare il classificatore
+  ricerca.json             domande con risposta attesa per valutare la ricerca semantica
+scripts/dev.mjs            avvia Postgres, API e interfaccia insieme
+src/
+  schema.ts                il contratto Zod dell'output del modello
+  ollama.ts                tutte le chiamate ai modelli: visione, embedding, chat con tool (streaming)
+  pipeline.ts              foto → modello → Zod → embedding
+  importazione.ts          importa una foto nel diario
+  webcam.ts                trova la fotocamera e scatta
+  registrazione.ts         registrazione dalla pagina Live: timer, coda, lavoratore
+  db.ts                    tutte le query (il resto del codice non sa che sotto c'è Postgres)
+  episodi.ts               eventi consecutivi → episodi
+  agente.ts                l'agente: tool, guardrail, traccia, eventi di streaming
+  server.ts                API Hono e stream SSE
+  valuta.ts                misura dell'accuratezza e matrice di confusione
+  importa.ts, scatta.ts, classify.ts, chiedi.ts, cerca.ts, confronta-embedding.ts   comandi da terminale
+web/src/
+  pages/                   Oggi, Live, Archivio, Configurazione, Credits
+  components/              Gallery (correzioni, foto grande), Chat (streaming, traccia)
+  api.ts                   client delle API e lettura degli stream SSE
+```
+
+---
+
+## Limiti noti
+
+- **Accuratezza ancora modesta** sulle azioni difficili ("mangia" 50%), con foto prese attraverso le sbarre e un modello da 9B quantizzato a 4 bit.
+- **Una foto è un istante**: "si pulisce" e "riposa" in un fotogramma possono essere identici. Il classificatore alterna azioni da uno scatto all'altro e spezza gli episodi.
+- **Lo stato della registrazione vive nel processo del server**: se il server si riavvia, la registrazione si ferma.
+- **Solo macOS** per l'acquisizione (`imagesnap`, `sips`, `caffeinate`).
+- **Nessuna autenticazione**: pensato per girare in locale con un solo utente.
+
+---
+
+## Roadmap: verso AWS
+
+La pipeline è già divisa in pezzi che corrispondono ai servizi AWS:
+
+```mermaid
+flowchart LR
+    CAM[Webcam] -->|presigned URL| S3[(S3)]
+    S3 -->|ObjectCreated| SQS[SQS + DLQ]
+    SQS --> L[Lambda<br/>analizza-foto]
+    L --> BR[Bedrock<br/>visione + embedding]
+    L --> RDS[(RDS Postgres<br/>+ pgvector)]
+    API[API su Fargate] --> RDS
+    WEB[Frontend] --> API
+```
+
+| Locale | AWS |
+|---|---|
+| cartella `photos/` | S3 |
+| coda in memoria | SQS, con retry e dead letter queue |
+| `importaFoto()` | handler della Lambda |
+| Ollama (`qwen3.5:9b`) | Bedrock (modello con visione + Titan/Cohere embeddings) |
+| Postgres in Docker | RDS Postgres + pgvector |
+| server Hono | container su Fargate, o Lambda con `hono/aws-lambda` |
+
+Prossimi passi:
+
+- [ ] **Provider astratto** (Ollama | Bedrock) e la stessa `npm run valuta` sui due: accuratezza, tempo e **costo a foto**, locale contro cloud.
+- [ ] **Voto a maggioranza** su scatti consecutivi, per stabilizzare le azioni e i conteggi degli episodi.
+- [ ] **Few-shot visivo** con le correzioni della galleria come esempi nel prompt.
+- [ ] **Embedding delle immagini (CLIP)** e confronto con la ricerca sulle descrizioni.
+- [ ] Notifica quando acqua o cibo sono scarsi.

@@ -11,6 +11,7 @@ import { nomeDaColore } from "./uccellini.js";
 //
 // Uso: npm run valuta                 → riclassifica le foto etichettate con il modello e il prompt di ADESSO
 //      npm run valuta -- --lato 1536  → idem, a un'altra risoluzione
+//      npm run valuta -- --foto cam_2026-10-13_15-23-37   → solo quella foto (ripetibile)
 //      npm run valuta -- --salvate    → niente modello: confronta le previsioni già nel database con le etichette
 // Per provare un altro modello: VISION_MODEL=qwen2.5vl:7b npm run valuta
 
@@ -18,6 +19,8 @@ type Caso = { foto: string; azioni: Record<string, string> };
 
 const args = process.argv.slice(2);
 const lato = args.includes("--lato") ? args[args.indexOf("--lato") + 1] : "1024";
+// --foto NOME (anche più volte): valuta solo queste foto. Accetta anche il nome con estensione.
+const soloFoto = args.flatMap((a, i) => (a === "--foto" && args[i + 1] ? [parse(args[i + 1]).name] : []));
 
 const pct = (n: number, d: number) => `${d ? Math.round((n / d) * 100) : 0}%`;
 
@@ -90,6 +93,12 @@ async function valutaModello(etichette: Etichetta[]) {
     if (!existsSync(jpg)) execFileSync("sips", ["-s", "format", "jpeg", "-Z", lato, originale, "--out", jpg], { stdio: "ignore" });
     return jpg;
   };
+
+  if (soloFoto.length) {
+    for (const nome of [...perFoto.keys()]) if (!soloFoto.includes(nome)) perFoto.delete(nome);
+    const mancanti = soloFoto.filter((n) => !perFoto.has(n));
+    if (mancanti.length) console.log(`⚠️ Senza etichette, saltate: ${mancanti.join(", ")}`);
+  }
 
   console.log(`Modello: ${VISION_MODEL} · lato: ${lato}px · ${perFoto.size} foto (${daFile.length} dal file, ${etichette.length} etichette dalla galleria)\n`);
   let giusti = 0, totale = 0;
