@@ -3,9 +3,8 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { ChatApi } from "./api-types.js";
-import { cercaSimili, elencoGiorni, elencoUccellini, fotoDelGiorno, percorsoFoto } from "./db.js";
-import { embed } from "./ollama.js";
-import { MIN_CONFIDENCE } from "./schema.js";
+import { chiediAllAgente } from "./agente.js";
+import { elencoGiorni, elencoUccellini, fotoDelGiorno, percorsoFoto } from "./db.js";
 
 const PORT = Number(process.env.PORT ?? 3001);
 const app = new Hono().basePath("/api");
@@ -28,35 +27,22 @@ app.get("/foto/:id/immagine", async (c) => {
   return c.body(await readFile(percorso));
 });
 
-// Per ora la chat è una ricerca semantica sul diario; diventerà l'agente con i tool.
-const ChatRequest = z.object({ domanda: z.string().trim().min(1).max(500) });
-
-const formatOra = (d: Date) =>
-  d.toLocaleString("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+// La chat: l'agente sceglie i tool (SQL o ricerca semantica) e risponde.
+const ChatRequest = z.object({
+  domanda: z.string().trim().min(1).max(500),
+  // Gli ultimi scambi, così l'agente capisce domande di seguito come "e Sky?".
+  storia: z
+    .array(z.object({ ruolo: z.enum(["utente", "assistente"]), testo: z.string().max(4000) }))
+    .max(10)
+    .default([]),
+});
 
 app.post("/chat", async (c) => {
   const body = ChatRequest.safeParse(await c.req.json().catch(() => null));
-  if (!body.success) return c.json({ errore: "Serve { domanda: string }" }, 400);
+  if (!body.success) return c.json({ errore: "Serve { domanda: string, storia?: [...] }" }, 400);
 
-  const [vettore] = await embed([body.data.domanda], "domanda");
-  const risultati = await cercaSimili(vettore, 3);
-
-  const righe = risultati.map((r) => {
-    const incerto = r.confidenza < MIN_CONFIDENCE ? " (incerto)" : "";
-    return `• ${formatOra(r.ora)} · ${r.uccellino}, ${r.azione.replace("_", " ")}${incerto}: ${r.descrizione}`;
-  });
-  const risposta: ChatApi = {
-    risposta: risultati.length
-      ? `Ecco i momenti del diario più vicini alla tua domanda:\n${righe.join("\n")}`
-      : "Il diario è ancora vuoto.",
-    fonti: risultati.map((r) => ({
-      foto_id: r.foto_id,
-      ora: r.ora.toISOString(),
-      uccellino: r.uccellino,
-      similarita: Number(r.similarita.toFixed(3)),
-    })),
-  };
-  return c.json(risposta);
+  const { risposta, passi } = await chiediAllAgente(body.data.domanda, body.data.storia);
+  return c.json<ChatApi>({ risposta, strumenti: passi });
 });
 
 app.onError((err, c) => {

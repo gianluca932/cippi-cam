@@ -1,7 +1,9 @@
 const STACK = [
   ["Ollama", "modelli in locale"],
   ["qwen3.5:9b", "visione: classifica le foto"],
-  ["qwen3:4b", "agente: risponde in chat leggendo il diario"],
+  ["qwen3.5:9b (agente)", "risponde in chat scegliendo i tool: SQL o ricerca semantica"],
+  ["Postgres + pgvector", "diario delle foto e ricerca per significato"],
+  ["Hono", "API"],
   ["Zod", "contratto e validazione dell'output dei modelli"],
   ["React + TypeScript", "interfaccia"],
   ["Vite", "dev server e build"],

@@ -5,6 +5,9 @@ import { COLORI, nomeDaColore } from "./uccellini.js";
 const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://localhost:11434";
 export const VISION_MODEL = process.env.VISION_MODEL ?? "qwen3.5:9b";
 export const EMBED_MODEL = process.env.EMBED_MODEL ?? "nomic-embed-text";
+// Lo stesso modello della visione: con 16 GB di RAM evita di caricarne due a turno.
+// (qwen3:4b ha il ragionamento sempre acceso: ~600 token per scegliere un tool.)
+export const AGENT_MODEL = process.env.AGENT_MODEL ?? "qwen3.5:9b";
 
 const prompt = `Nella gabbia vivono ${COLORI.length} pappagallini (budgerigar), uno per colore: ${COLORI.join(", ")}.
 Guarda con attenzione tutta la gabbia, anche dietro posatoi, sbarre e giocattoli. Rispondi SOLO con JSON.
@@ -63,6 +66,37 @@ export async function classifyImage(imageBase64: string) {
     options: { temperature: 0, num_ctx: 8192 }, // la foto da sola occupa ~4000 token
   });
   return { raw: data.message.content, timing: data };
+}
+
+// --- Chat con tool (l'agente) ---
+
+export type ToolCall = { function: { name: string; arguments: Record<string, unknown> } };
+
+export type Messaggio =
+  | { role: "system" | "user"; content: string }
+  | { role: "assistant"; content: string; tool_calls?: ToolCall[] }
+  | { role: "tool"; tool_name: string; content: string };
+
+export type DefinizioneTool = {
+  type: "function";
+  function: { name: string; description: string; parameters: unknown };
+};
+
+// pensa = ragionamento acceso: il modello sceglie i tool in modo più affidabile, ma è 2-3 volte più lento.
+export async function chatConTool(messages: Messaggio[], tools: DefinizioneTool[], pensa = false) {
+  const data = await post<{ message: { content: string; tool_calls?: ToolCall[] } } & ChatResponse>("/api/chat", {
+    model: AGENT_MODEL,
+    stream: false,
+    think: pensa,
+    messages,
+    tools,
+    options: { temperature: 0, num_ctx: 8192 },
+  });
+  if (process.env.DEBUG_AGENTE) {
+    console.log(`   [${AGENT_MODEL}${pensa ? " +ragionamento" : ""}] prompt ${data.prompt_eval_count} token in ${(data.prompt_eval_duration / 1e9).toFixed(1)}s,`
+      + ` risposta ${data.eval_count} token in ${(data.eval_duration / 1e9).toFixed(1)}s`);
+  }
+  return data.message;
 }
 
 // Ogni modello di embedding vuole i suoi prefissi per i documenti e per le domande.

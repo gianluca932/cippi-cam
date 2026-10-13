@@ -20,6 +20,7 @@ export const UCCELLINI = z
   .parse(JSON.parse(readFileSync(CONFIG_PATH, "utf8")));
 
 export const COLORI = UCCELLINI.map((u) => u.colore) as [string, ...string[]];
+export const NOMI = UCCELLINI.map((u) => u.nome) as [string, ...string[]];
 
 export function nomeDaColore(colore: string): string {
   const u = UCCELLINI.find((u) => u.colore === colore);

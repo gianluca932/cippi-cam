@@ -33,5 +33,6 @@ export type GiornoApi = {
 
 export type ChatApi = {
   risposta: string;
-  fonti: { foto_id: number; ora: string; uccellino: string; similarita: number }[];
+  // I tool che l'agente ha chiamato per rispondere, in ordine.
+  strumenti: { nome: string; argomenti: Record<string, unknown>; errore?: string }[];
 };

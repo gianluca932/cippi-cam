@@ -200,3 +200,7 @@ dd.tbd { color: var(--warn); font-style: italic; font-family: inherit; }
 .scena { margin: 2px 0 0; }
 .bubble { white-space: pre-line; }
 .errore { color: var(--warn); }
+
+/* Tool usati dall'agente, sotto la risposta */
+.strumenti { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border); font-size: 0.75rem; font-family: ui-monospace, monospace; color: var(--muted); }
+.strumenti .errore { color: var(--warn); }

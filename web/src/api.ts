@@ -42,11 +42,13 @@ async function get<T>(path: string): Promise<T> {
   return res.json();
 }
 
-export async function chiediAlDiario(domanda: string): Promise<ChatApi> {
+export type TurnoChat = { ruolo: "utente" | "assistente"; testo: string };
+
+export async function chiediAlDiario(domanda: string, storia: TurnoChat[] = []): Promise<ChatApi> {
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ domanda }),
+    body: JSON.stringify({ domanda, storia }),
   });
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   return res.json();

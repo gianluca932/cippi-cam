@@ -8,22 +8,25 @@ import { COLORI } from "./uccellini.js";
 // L'ordine dei campi conta: con l'output strutturato il modello li scrive in quest'ordine.
 // Prima osserva (posizione, postura, descrizione), poi classifica (azione, confidenza).
 
+export const AZIONI = [
+  "mangia",
+  "beve",
+  "dorme",
+  "si_pulisce",
+  "gioca",
+  "vola",
+  "riposa",
+  "non_visibile",
+] as const;
+export type Azione = (typeof AZIONI)[number];
+
 export const EventoUccellino = z.object({
   colore: z.enum(COLORI),
   posizione: z.string().min(1),
   postura: z.string().min(1),
   oggetti_vicini: z.array(z.string()),
   descrizione: z.string().min(1),
-  azione: z.enum([
-    "mangia",
-    "beve",
-    "dorme",
-    "si_pulisce",
-    "gioca",
-    "vola",
-    "riposa",
-    "non_visibile",
-  ]),
+  azione: z.enum(AZIONI),
   confidenza: z.number().min(0).max(1),
 });
 

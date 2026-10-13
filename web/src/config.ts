@@ -42,7 +42,7 @@ export const configs: Record<Ambiente, AppConfig> = {
       provider: "Ollama",
       endpoint: "http://localhost:11434",
       visione: "qwen3.5:9b",
-      chat: "qwen3:4b",
+      chat: "qwen3.5:9b (lo stesso della visione)",
       embedding: "nomic-embed-text (768 dim)",
       contesto: 8192,
       sogliaConfidenza: 0.6,
