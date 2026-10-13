@@ -4,13 +4,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "classify": "tsx src/classify.ts"
+    "classify": "tsx src/classify.ts",
+    "db:up": "docker compose up -d",
+    "db:psql": "docker compose exec db psql -U cippi cippi",
+    "cerca": "tsx src/cerca.ts"
   },
   "dependencies": {
+    "pg": "^8.23.1",
     "zod": "^4.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.23.1",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
   }

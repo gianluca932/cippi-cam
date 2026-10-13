@@ -1,4 +1,5 @@
 import { useState } from "react";
+import uccellini from "../../../config/uccellini.json";
 import { configs, type Ambiente } from "../config";
 
 type Row = [label: string, value: string | number | undefined];
@@ -39,6 +40,10 @@ export function Configurazione() {
       </div>
 
       <div className="config-grid">
+        <Section
+          title="Uccellini · config/uccellini.json"
+          rows={uccellini.map((u): Row => [u.nome, u.colore])}
+        />
         <Section
           title="Modelli"
           rows={[

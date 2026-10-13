@@ -1,7 +1,8 @@
 // Stesso contratto del classificatore: solo il tipo, niente Zod nel browser.
-import type { CippiEvent } from "../../src/schema";
+import type { EventoUccellino as CippiEvent } from "../../src/schema";
 
-export type DiaryEntry = CippiEvent & {
+// I campi descrittivi (posizione, postura, ...) nei mock sono opzionali.
+export type DiaryEntry = Pick<CippiEvent, "azione" | "confidenza" | "descrizione"> & Partial<CippiEvent> & {
   id: string;
   ora: string; // "HH:MM"
   foto?: string; // se manca, la galleria mostra un segnaposto
