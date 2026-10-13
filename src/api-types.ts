@@ -41,3 +41,11 @@ export type ChatApi = {
   risposta: string;
   traccia: PassoTraccia[];
 };
+
+// Eventi dello streaming della chat (SSE), nell'ordine in cui succedono.
+export type EventoChat =
+  | { tipo: "pensiero"; testo: string } // un pezzetto di ragionamento
+  | { tipo: "passo"; passo: PassoTraccia } // un tool usato o un intervento del guardrail
+  | { tipo: "testo"; testo: string } // un pezzetto della risposta
+  | { tipo: "fine"; risposta: string; traccia: PassoTraccia[] } // la versione definitiva
+  | { tipo: "errore"; messaggio: string };

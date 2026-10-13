@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import type { ChatApi } from "../../src/api-types";
+import type { ChatApi, EventoChat } from "../../src/api-types";
 
-export type { ChatApi, EventoApi, FotoApi, GiornoApi, PassoTraccia, UccellinoApi } from "../../src/api-types";
+export type { ChatApi, EventoApi, EventoChat, FotoApi, GiornoApi, PassoTraccia, UccellinoApi } from "../../src/api-types";
 
 export const MIN_CONFIDENCE = 0.6; // come in src/schema.ts
 
@@ -52,6 +52,37 @@ export async function chiediAlDiario(domanda: string, storia: TurnoChat[] = []):
   });
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   return res.json();
+}
+
+// Chat in streaming: legge gli eventi SSE man mano che il server li manda.
+// EventSource del browser funziona solo in GET, quindi leggiamo lo stream a mano con fetch.
+export async function chiediInStreaming(domanda: string, storia: TurnoChat[], onEvento: (e: EventoChat) => void) {
+  const res = await fetch("/api/chat/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ domanda, storia }),
+  });
+  if (!res.ok || !res.body) throw new Error(`${res.status} ${await res.text()}`);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    // Ogni evento SSE finisce con una riga vuota; il contenuto sta nelle righe "data: ...".
+    const eventi = buffer.split("\n\n");
+    buffer = eventi.pop()!;
+    for (const evento of eventi) {
+      const data = evento
+        .split("\n")
+        .filter((r) => r.startsWith("data:"))
+        .map((r) => r.slice(5).trim())
+        .join("\n");
+      if (data) onEvento(JSON.parse(data));
+    }
+  }
 }
 
 // Carica una risorsa dell'API quando cambia il path.

@@ -215,3 +215,14 @@ dd.tbd { color: var(--warn); font-style: italic; font-family: inherit; }
 .traccia p { margin: 2px 0; white-space: pre-line; }
 .traccia .risultato { font-style: normal; font-family: ui-monospace, monospace; font-size: 0.72rem; word-break: break-all; }
 .traccia .guardrail, .traccia .errore { color: var(--warn); }
+
+/* "Sto pensando…": pulsa piano finché non arriva la risposta, poi sparisce */
+.pensando { animation: pulsa 1.8s ease-in-out infinite; }
+.pensando-etichetta { margin: 0 0 4px; color: var(--muted); font-style: italic; font-size: 0.85rem; }
+.pensando .traccia { margin-bottom: 0; border-bottom: none; }
+.risposta { animation: appare 0.3s ease-out; }
+@keyframes pulsa { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+@keyframes appare { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .pensando, .risposta { animation: none; }
+}

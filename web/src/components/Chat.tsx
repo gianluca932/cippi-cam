@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { chiediAlDiario, type ChatApi, type PassoTraccia } from "../api";
+import { chiediInStreaming, type ChatApi, type EventoChat, type PassoTraccia } from "../api";
 
 type Message = { role: "user" | "assistant"; text: string; traccia?: ChatApi["traccia"] };
 
@@ -35,6 +35,28 @@ function Traccia({ passi }: { passi: PassoTraccia[] }) {
   );
 }
 
+// Applica un evento dello streaming alla bolla della risposta in corso.
+function applica(m: Message, e: EventoChat): Message {
+  const traccia = [...(m.traccia ?? [])];
+  switch (e.tipo) {
+    case "pensiero": {
+      // I pezzetti di ragionamento si attaccano all'ultimo pensiero, se è l'ultimo passo.
+      const ultimo = traccia.at(-1);
+      if (ultimo?.tipo === "pensiero") traccia[traccia.length - 1] = { ...ultimo, testo: ultimo.testo + e.testo };
+      else traccia.push({ tipo: "pensiero", testo: e.testo });
+      return { ...m, traccia };
+    }
+    case "passo":
+      return { ...m, traccia: [...traccia, e.passo] };
+    case "testo":
+      return { ...m, text: m.text + e.testo };
+    case "fine": // la versione definitiva del server sostituisce quella costruita a pezzi
+      return { ...m, text: e.risposta, traccia: e.traccia };
+    case "errore":
+      return { ...m, text: `⚠️ Errore: ${e.messaggio}` };
+  }
+}
+
 export function Chat() {
   const [messages, setMessages] = useState<Message[]>([BENVENUTO]);
   const [input, setInput] = useState("");
@@ -53,14 +75,16 @@ export function Chat() {
       .slice(-6)
       .map((m) => ({ ruolo: m.role === "user" ? ("utente" as const) : ("assistente" as const), testo: m.text }));
 
-    setMessages((m) => [...m, { role: "user", text }]);
+    // La bolla della risposta parte vuota e si riempie a ogni evento.
+    setMessages((m) => [...m, { role: "user", text }, { role: "assistant", text: "", traccia: [] }]);
     setInput("");
     setLoading(true);
+    const aggiornaUltima = (f: (m: Message) => Message) =>
+      setMessages((ms) => [...ms.slice(0, -1), f(ms[ms.length - 1])]);
     try {
-      const { risposta, traccia } = await chiediAlDiario(text, storia);
-      setMessages((m) => [...m, { role: "assistant", text: senzaMarkdown(risposta), traccia }]);
+      await chiediInStreaming(text, storia, (e) => aggiornaUltima((m) => applica(m, e)));
     } catch (e) {
-      setMessages((m) => [...m, { role: "assistant", text: `⚠️ Errore: ${(e as Error).message}` }]);
+      aggiornaUltima((m) => ({ ...m, text: `⚠️ Errore: ${(e as Error).message}` }));
     } finally {
       setLoading(false);
     }
@@ -75,13 +99,23 @@ export function Chat() {
     <section className="panel chat">
       <h2>Chat</h2>
       <div className="messages">
-        {messages.map((m, i) => (
-          <div key={i} className={`bubble ${m.role}`}>
-            {!!m.traccia?.length && <Traccia passi={m.traccia} />}
-            {m.text}
-          </div>
-        ))}
-        {loading && <div className="bubble assistant muted">Sto consultando il diario…</div>}
+        {messages.map((m, i) => {
+          // Finché la risposta non inizia, la bolla mostra il "pensiero" (che pulsa piano);
+          // appena arriva il primo pezzo di risposta, il pensiero sparisce.
+          const staPensando = loading && i === messages.length - 1 && !m.text;
+          return (
+            <div key={i} className={`bubble ${m.role}`}>
+              {staPensando ? (
+                <div className="pensando">
+                  <p className="pensando-etichetta">Sto pensando…</p>
+                  {!!m.traccia?.length && <Traccia passi={m.traccia} />}
+                </div>
+              ) : (
+                <span className="risposta">{m.role === "assistant" ? senzaMarkdown(m.text) : m.text}</span>
+              )}
+            </div>
+          );
+        })}
         <div ref={endRef} />
       </div>
       <div className="suggestions">

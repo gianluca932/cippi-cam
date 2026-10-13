@@ -2,7 +2,7 @@ import { z } from "zod";
 import { cercaSimili, eventiDelGiorno, gabbiaDelGiorno } from "./db.js";
 import { episodi } from "./episodi.js";
 import { chatConTool, embed, type DefinizioneTool, type Messaggio } from "./ollama.js";
-import type { PassoTraccia } from "./api-types.js";
+import type { EventoChat, PassoTraccia } from "./api-types.js";
 import { AZIONI, MIN_CONFIDENCE } from "./schema.js";
 import { NOMI, UCCELLINI } from "./uccellini.js";
 
@@ -148,9 +148,11 @@ const abbrevia = (v: unknown, max = 220) => {
 
 export type TurnoChat = { ruolo: "utente" | "assistente"; testo: string };
 
+// emetti riceve gli eventi man mano (per lo streaming); senza, si aspetta solo il risultato finale.
 export async function chiediAllAgente(
   domanda: string,
   storia: TurnoChat[] = [],
+  emetti: (e: EventoChat) => void = () => {},
 ): Promise<{ risposta: string; traccia: PassoTraccia[] }> {
   const messages: Messaggio[] = [
     { role: "system", content: systemPrompt() },
@@ -159,15 +161,29 @@ export async function chiediAllAgente(
   ];
   const traccia: PassoTraccia[] = [];
   const toolUsati = () => traccia.some((p) => p.tipo === "tool");
+  const aggiungi = (passo: PassoTraccia) => {
+    traccia.push(passo);
+    if (passo.tipo !== "pensiero") emetti({ tipo: "passo", passo }); // il pensiero è già arrivato a pezzetti
+  };
+  const fine = (risposta: string) => {
+    emetti({ tipo: "fine", risposta, traccia });
+    return { risposta, traccia };
+  };
   let pensa = false; // si accende solo se il modello prova a rispondere senza tool
 
   for (let giro = 0; giro < MAX_GIRI; giro++) {
-    const risposta = await chatConTool(messages, DEFINIZIONI, pensa);
+    // Il pensiero va subito al browser. La risposta solo se è già stato usato un tool:
+    // altrimenti potrebbe essere inventata, e la trattiene finché il guardrail non l'ha controllata.
+    const sicura = toolUsati();
+    const risposta = await chatConTool(messages, DEFINIZIONI, pensa, (d) => {
+      if (d.pensiero) emetti({ tipo: "pensiero", testo: d.pensiero });
+      if (d.testo && sicura) emetti({ tipo: "testo", testo: d.testo });
+    });
     messages.push({ role: "assistant", content: risposta.content, tool_calls: risposta.tool_calls });
 
     const { pensiero: pensieroNelTesto, risposta: testo } = separaPensiero(risposta.content);
     const pensiero = risposta.thinking?.trim() || pensieroNelTesto;
-    if (pensiero) traccia.push({ tipo: "pensiero", testo: pensiero });
+    if (pensiero) aggiungi({ tipo: "pensiero", testo: pensiero });
 
     // Nessun tool richiesto: questa è la risposta finale...
     if (!risposta.tool_calls?.length) {
@@ -176,10 +192,10 @@ export async function chiediAllAgente(
       if (!toolUsati() && /\d/.test(testo)) {
         if (pensa) {
           // Anche ragionando non ha usato tool: meglio nessuna risposta che una inventata.
-          traccia.push({ tipo: "guardrail", testo: "Di nuovo una risposta senza consultare il diario: la scarto." });
-          return { risposta: "Non sono riuscito a consultare il diario per questa domanda. Prova a riformularla.", traccia };
+          aggiungi({ tipo: "guardrail", testo: "Di nuovo una risposta senza consultare il diario: la scarto." });
+          return fine("Non sono riuscito a consultare il diario per questa domanda. Prova a riformularla.");
         }
-        traccia.push({
+        aggiungi({
           tipo: "guardrail",
           testo: "Risposta con numeri senza aver consultato il diario: la scarto e riprovo ragionando.",
         });
@@ -187,7 +203,7 @@ export async function chiediAllAgente(
         pensa = true;
         continue;
       }
-      return { risposta: testo, traccia };
+      return fine(testo);
     }
 
     for (const chiamata of risposta.tool_calls) {
@@ -208,12 +224,12 @@ export async function chiediAllAgente(
       }
 
       const errore = (contenuto as { errore?: string }).errore;
-      traccia.push({ tipo: "tool", nome: name, argomenti: argsPuliti, risultato: abbrevia(contenuto), ...(errore && { errore }) });
+      aggiungi({ tipo: "tool", nome: name, argomenti: argsPuliti, risultato: abbrevia(contenuto), ...(errore && { errore }) });
       messages.push({ role: "tool", tool_name: name, content: JSON.stringify(contenuto) });
     }
     // Il ragionamento serve a scegliere il tool; per scrivere la risposta finale basta la modalità veloce.
     pensa = false;
   }
 
-  return { risposta: "Non sono riuscito a trovare una risposta: troppi passaggi. Prova a riformulare.", traccia };
+  return fine("Non sono riuscito a trovare una risposta: troppi passaggi. Prova a riformulare.");
 }

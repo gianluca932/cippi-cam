@@ -2,7 +2,8 @@ import { readFile } from "node:fs/promises";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { z } from "zod";
-import type { ChatApi } from "./api-types.js";
+import { streamSSE } from "hono/streaming";
+import type { ChatApi, EventoChat } from "./api-types.js";
 import { chiediAllAgente } from "./agente.js";
 import { elencoGiorni, elencoUccellini, fotoDelGiorno, percorsoFoto } from "./db.js";
 
@@ -42,6 +43,27 @@ app.post("/chat", async (c) => {
   if (!body.success) return c.json({ errore: "Serve { domanda: string, storia?: [...] }" }, 400);
 
   return c.json<ChatApi>(await chiediAllAgente(body.data.domanda, body.data.storia));
+});
+
+// La stessa chat in streaming (Server-Sent Events): ogni passo dell'agente arriva appena succede.
+app.post("/chat/stream", async (c) => {
+  const body = ChatRequest.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ errore: "Serve { domanda: string, storia?: [...] }" }, 400);
+
+  return streamSSE(c, async (stream) => {
+    // Gli eventi si accodano: ogni writeSSE parte quando il precedente è stato scritto.
+    let coda = Promise.resolve();
+    const invia = (e: EventoChat) => {
+      coda = coda.then(() => stream.writeSSE({ data: JSON.stringify(e) }));
+    };
+    try {
+      await chiediAllAgente(body.data.domanda, body.data.storia, invia);
+    } catch (err) {
+      console.error(err);
+      invia({ tipo: "errore", messaggio: (err as Error).message });
+    }
+    await coda;
+  });
 });
 
 app.onError((err, c) => {

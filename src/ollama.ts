@@ -83,21 +83,62 @@ export type DefinizioneTool = {
 };
 
 // pensa = ragionamento acceso: il modello sceglie i tool in modo più affidabile, ma è 2-3 volte più lento.
-export async function chatConTool(messages: Messaggio[], tools: DefinizioneTool[], pensa = false) {
-  // thinking: il ragionamento, presente solo con pensa = true.
-  const data = await post<{ message: { content: string; thinking?: string; tool_calls?: ToolCall[] } } & ChatResponse>("/api/chat", {
-    model: AGENT_MODEL,
-    stream: false,
-    think: pensa,
-    messages,
-    tools,
-    options: { temperature: 0, num_ctx: 8192 },
+// Con stream: true Ollama manda una riga JSON per ogni pezzetto generato: li passiamo a onDelta man mano.
+export type Delta = { pensiero?: string; testo?: string };
+
+export async function chatConTool(
+  messages: Messaggio[],
+  tools: DefinizioneTool[],
+  pensa = false,
+  onDelta: (d: Delta) => void = () => {},
+) {
+  const res = await fetch(`${OLLAMA_URL}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: AGENT_MODEL,
+      stream: true,
+      think: pensa,
+      messages,
+      tools,
+      options: { temperature: 0, num_ctx: 8192 },
+    }),
   });
-  if (process.env.DEBUG_AGENTE) {
-    console.log(`   [${AGENT_MODEL}${pensa ? " +ragionamento" : ""}] prompt ${data.prompt_eval_count} token in ${(data.prompt_eval_duration / 1e9).toFixed(1)}s,`
-      + ` risposta ${data.eval_count} token in ${(data.eval_duration / 1e9).toFixed(1)}s`);
+  if (!res.ok || !res.body) throw new Error(`Ollama ha risposto ${res.status}: ${await res.text()}`);
+
+  type Pezzo = { message?: { content?: string; thinking?: string; tool_calls?: ToolCall[] }; done?: boolean } & Partial<Omit<ChatResponse, "message">>;
+  const messaggio = { content: "", thinking: "", tool_calls: [] as ToolCall[] };
+  let ultimo: Pezzo = {};
+
+  // Lo stream arriva a blocchi di byte: ricomponiamo le righe JSON (NDJSON).
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for await (const chunk of res.body) {
+    buffer += decoder.decode(chunk, { stream: true });
+    const righe = buffer.split("\n");
+    buffer = righe.pop()!;
+    for (const riga of righe) {
+      if (!riga.trim()) continue;
+      const pezzo: Pezzo = JSON.parse(riga);
+      const m: NonNullable<Pezzo["message"]> = pezzo.message ?? {};
+      if (m.thinking) {
+        messaggio.thinking += m.thinking;
+        onDelta({ pensiero: m.thinking });
+      }
+      if (m.content) {
+        messaggio.content += m.content;
+        onDelta({ testo: m.content });
+      }
+      if (m.tool_calls) messaggio.tool_calls.push(...m.tool_calls);
+      ultimo = pezzo;
+    }
   }
-  return data.message;
+
+  if (process.env.DEBUG_AGENTE) {
+    console.log(`   [${AGENT_MODEL}${pensa ? " +ragionamento" : ""}] prompt ${ultimo.prompt_eval_count} token in ${((ultimo.prompt_eval_duration ?? 0) / 1e9).toFixed(1)}s,`
+      + ` risposta ${ultimo.eval_count} token in ${((ultimo.eval_duration ?? 0) / 1e9).toFixed(1)}s`);
+  }
+  return messaggio;
 }
 
 // Ogni modello di embedding vuole i suoi prefissi per i documenti e per le domande.
