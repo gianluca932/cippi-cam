@@ -70,29 +70,15 @@ body {
   display: flex;
   flex-direction: column;
 }
-.card.uncertain { border-color: var(--warn); border-style: dashed; }
-.card img, .placeholder {
+.card img {
   width: 100%;
   aspect-ratio: 4 / 3;
   object-fit: cover;
   display: block;
 }
-.placeholder {
-  display: grid;
-  place-items: center;
-  font-size: 3rem;
-  background: var(--bubble-ai);
-}
 .card-body { padding: 10px; display: flex; flex-direction: column; gap: 6px; }
-.card-body p { margin: 0; font-size: 0.9rem; }
+.card-body p { margin: 0; font-size: 0.85rem; }
 .card-top { display: flex; justify-content: space-between; align-items: center; }
-.badge {
-  background: var(--bubble-ai);
-  border-radius: 999px;
-  padding: 2px 8px;
-  font-size: 0.8rem;
-  font-weight: 600;
-}
 
 /* Chat */
 .chat {
@@ -202,3 +188,15 @@ dd.tbd { color: var(--warn); font-style: italic; font-family: inherit; }
 /* Credits */
 .credits { max-width: 640px; }
 .credits h3 { margin-top: 20px; }
+
+/* Card foto con più uccellini */
+.evento { display: grid; grid-template-columns: auto auto 1fr auto; align-items: center; gap: 6px; font-size: 0.88rem; }
+.evento.incerto { opacity: 0.6; }
+.dot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--border); }
+.livelli { display: flex; gap: 6px; }
+.livello { font-size: 0.75rem; background: var(--bubble-ai); border-radius: 999px; padding: 2px 8px; }
+.livello.muted { color: var(--muted); }
+.livello.allarme { background: var(--warn); color: #1d2420; font-weight: 600; }
+.scena { margin: 2px 0 0; }
+.bubble { white-space: pre-line; }
+.errore { color: var(--warn); }

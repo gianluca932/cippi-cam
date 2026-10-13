@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { askCippi } from "../mock";
+import { chiediAlDiario } from "../api";
 
 type Message = { role: "user" | "assistant"; text: string };
 
-const SUGGESTIONS = ["Cosa ha fatto Cippi oggi?", "Quante volte ha mangiato?", "Ha dormito?"];
+const SUGGESTIONS = ["Quando Sky era nascosto?", "Cippi che riposa sul posatoio", "Qualcuno sta mangiando?"];
 
 export function Chat() {
   const [messages, setMessages] = useState<Message[]>([
-    { role: "assistant", text: "Ciao! Chiedimi cosa ha fatto Cippi oggi." },
+    {
+      role: "assistant",
+      text: "Ciao! Per ora cerco nel diario per significato (ricerca semantica). L'agente vero arriva presto.",
+    },
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -22,9 +25,14 @@ export function Chat() {
     setMessages((m) => [...m, { role: "user", text }]);
     setInput("");
     setLoading(true);
-    const answer = await askCippi(text);
-    setMessages((m) => [...m, { role: "assistant", text: answer }]);
-    setLoading(false);
+    try {
+      const { risposta } = await chiediAlDiario(text);
+      setMessages((m) => [...m, { role: "assistant", text: risposta }]);
+    } catch (e) {
+      setMessages((m) => [...m, { role: "assistant", text: `⚠️ Errore: ${(e as Error).message}` }]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   function onSubmit(e: FormEvent) {

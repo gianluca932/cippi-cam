@@ -1,5 +1,5 @@
 // Configurazione di Cippi Cam per ambiente.
-// Per ora vive nel frontend; quando arriva il backend la sposteremo lì (e i segreti in .env / AWS Secrets Manager).
+// Per ora è solo da mostrare; i valori veri vivono nel backend (env) e i segreti andranno in AWS Secrets Manager.
 
 export type Ambiente = "locale" | "aws";
 
@@ -9,6 +9,7 @@ export type AppConfig = {
     endpoint: string;
     visione: string; // gli "occhi": classifica le foto
     chat: string; // il "cervello": l'agente che legge il diario
+    embedding: string; // ricerca semantica sulle descrizioni
     contesto: number; // num_ctx
     sogliaConfidenza: number;
   };
@@ -42,12 +43,13 @@ export const configs: Record<Ambiente, AppConfig> = {
       endpoint: "http://localhost:11434",
       visione: "qwen3.5:9b",
       chat: "qwen3:4b",
+      embedding: "nomic-embed-text (768 dim)",
       contesto: 8192,
       sogliaConfidenza: 0.6,
     },
-    database: { tipo: "SQLite", connessione: "./data/cippi.db" },
-    storageFoto: { tipo: "Filesystem", percorso: "./photos" },
-    calcolo: { tipo: "MacBook", dettagli: "Node.js + Ollama sulla stessa macchina" },
+    database: { tipo: "Postgres 17 + pgvector (Docker)", connessione: "postgres://localhost:5432/cippi" },
+    storageFoto: { tipo: "Filesystem", percorso: "photos/ → data/foto/ (1024px)" },
+    calcolo: { tipo: "MacBook", dettagli: "Node.js (Hono, porta 3001) + Ollama + Docker" },
     rete: { accesso: "solo localhost" },
   },
   aws: {
@@ -56,10 +58,11 @@ export const configs: Record<Ambiente, AppConfig> = {
       endpoint: TBD,
       visione: TBD,
       chat: TBD,
+      embedding: TBD,
       contesto: 8192,
       sogliaConfidenza: 0.6,
     },
-    database: { tipo: TBD, connessione: TBD }, // DynamoDB oppure RDS Postgres
+    database: { tipo: "RDS Postgres + pgvector", connessione: TBD }, // stesso SQL del locale
     storageFoto: { tipo: "S3", percorso: `s3://${TBD}` },
     calcolo: { tipo: TBD, dettagli: TBD }, // Lambda, ECS Fargate o EC2
     rete: {

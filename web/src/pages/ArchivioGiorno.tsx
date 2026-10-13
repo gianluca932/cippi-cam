@@ -1,23 +1,17 @@
 import { Link, useParams } from "react-router";
 import { Gallery } from "../components/Gallery";
-import { archive, formatDay } from "../mock";
+import { formatDay, useApi, type FotoApi } from "../api";
 
 export function ArchivioGiorno() {
-  const { giorno } = useParams();
-  const day = archive.find((d) => d.giorno === giorno);
-
-  if (!day) {
-    return (
-      <p className="muted">
-        Nessun dato per questo giorno. <Link to="/archivio">Torna all'archivio</Link>
-      </p>
-    );
-  }
+  const { giorno = "" } = useParams();
+  const { data, error, loading } = useApi<FotoApi[]>(`/foto?giorno=${giorno}`);
 
   return (
     <>
       <Link to="/archivio" className="back">← Archivio</Link>
-      <Gallery title={formatDay(day.giorno)} entries={day.eventi} />
+      {loading && <p className="muted">Carico…</p>}
+      {error && <p className="errore">{error}</p>}
+      {data && <Gallery title={formatDay(giorno)} foto={data} />}
     </>
   );
 }

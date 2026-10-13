@@ -57,11 +57,24 @@ export async function classifyImage(imageBase64: string) {
   return { raw: data.message.content, timing: data };
 }
 
-// nomic-embed-text vuole un prefisso diverso per i documenti e per le domande.
-export async function embed(texts: string[], kind: "documento" | "domanda"): Promise<number[][]> {
-  const prefix = kind === "documento" ? "search_document: " : "search_query: ";
+// Ogni modello di embedding vuole i suoi prefissi per i documenti e per le domande.
+const PREFISSI: Record<string, { documento: string; domanda: string }> = {
+  "nomic-embed-text": { documento: "search_document: ", domanda: "search_query: " },
+  "qwen3-embedding:0.6b": {
+    documento: "",
+    domanda: "Instruct: Given a question about two pet budgies, retrieve the diary entries that answer it\nQuery: ",
+  },
+  "bge-m3": { documento: "", domanda: "" },
+};
+
+export async function embed(
+  texts: string[],
+  kind: "documento" | "domanda",
+  model = EMBED_MODEL,
+): Promise<number[][]> {
+  const prefix = PREFISSI[model]?.[kind] ?? "";
   const data = await post<{ embeddings: number[][] }>("/api/embed", {
-    model: EMBED_MODEL,
+    model,
     input: texts.map((t) => prefix + t),
   });
   return data.embeddings;

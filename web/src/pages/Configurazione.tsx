@@ -51,6 +51,7 @@ export function Configurazione() {
             ["Endpoint", c.modelli.endpoint],
             ["Visione (occhi)", c.modelli.visione],
             ["Chat (agente)", c.modelli.chat],
+            ["Embedding", c.modelli.embedding],
             ["Contesto (num_ctx)", c.modelli.contesto],
             ["Soglia confidenza", c.modelli.sogliaConfidenza],
           ]}

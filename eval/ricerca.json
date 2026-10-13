@@ -1,0 +1,18 @@
+[
+  {
+    "domanda": "uccellino nascosto che si vede poco",
+    "attesi": ["IMG_0721/Cippi", "IMG_0719/Sky"]
+  },
+  {
+    "domanda": "pappagallino giallo ben visibile",
+    "attesi": ["IMG_0719/Cippi"]
+  },
+  {
+    "domanda": "Sky vicino a una sfera blu",
+    "attesi": ["IMG_0721/Sky"]
+  },
+  {
+    "domanda": "il celeste dietro il posatoio centrale",
+    "attesi": ["IMG_0719/Sky"]
+  }
+]
