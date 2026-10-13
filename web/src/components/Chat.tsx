@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { chiediAlDiario, type ChatApi } from "../api";
+import { chiediAlDiario, type ChatApi, type PassoTraccia } from "../api";
 
-type Message = { role: "user" | "assistant"; text: string; strumenti?: ChatApi["strumenti"] };
+type Message = { role: "user" | "assistant"; text: string; traccia?: ChatApi["traccia"] };
 
 const SUGGESTIONS = ["Quante volte ha mangiato Cippi oggi?", "Cosa ha fatto Sky oggi?", "C'è abbastanza acqua?"];
 const BENVENUTO: Message = {
@@ -14,8 +14,26 @@ const BENVENUTO: Message = {
 const senzaMarkdown = (t: string) => t.replace(/\*\*(.+?)\*\*/g, "$1").replace(/^\s*\*\s+/gm, "• ");
 
 // "conta_eventi(uccellino: Cippi, azione: mangia)"
-const descriviTool = (s: ChatApi["strumenti"][number]) =>
-  `${s.nome}(${Object.entries(s.argomenti).map(([k, v]) => `${k}: ${v}`).join(", ")})`;
+const descriviTool = (p: Extract<PassoTraccia, { tipo: "tool" }>) =>
+  `${p.nome}(${Object.entries(p.argomenti).map(([k, v]) => `${k}: ${v}`).join(", ")})`;
+
+// I passaggi dell'agente, in grigio sopra la risposta: come se stesse pensando.
+function Traccia({ passi }: { passi: PassoTraccia[] }) {
+  return (
+    <div className="traccia">
+      {passi.map((p, i) => {
+        if (p.tipo === "pensiero") return <p key={i}>🧠 {p.testo}</p>;
+        if (p.tipo === "guardrail") return <p key={i} className="guardrail">🛡️ {p.testo}</p>;
+        return (
+          <div key={i} className={p.errore ? "errore" : ""}>
+            <p>🔧 {descriviTool(p)}{p.errore && ` — ${p.errore}`}</p>
+            <p className="risultato">↳ {p.risultato}</p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export function Chat() {
   const [messages, setMessages] = useState<Message[]>([BENVENUTO]);
@@ -39,8 +57,8 @@ export function Chat() {
     setInput("");
     setLoading(true);
     try {
-      const { risposta, strumenti } = await chiediAlDiario(text, storia);
-      setMessages((m) => [...m, { role: "assistant", text: senzaMarkdown(risposta), strumenti }]);
+      const { risposta, traccia } = await chiediAlDiario(text, storia);
+      setMessages((m) => [...m, { role: "assistant", text: senzaMarkdown(risposta), traccia }]);
     } catch (e) {
       setMessages((m) => [...m, { role: "assistant", text: `⚠️ Errore: ${(e as Error).message}` }]);
     } finally {
@@ -59,17 +77,8 @@ export function Chat() {
       <div className="messages">
         {messages.map((m, i) => (
           <div key={i} className={`bubble ${m.role}`}>
+            {!!m.traccia?.length && <Traccia passi={m.traccia} />}
             {m.text}
-            {!!m.strumenti?.length && (
-              <div className="strumenti">
-                {m.strumenti.map((s, j) => (
-                  <div key={j} className={s.errore ? "errore" : ""}>
-                    🔧 {descriviTool(s)}
-                    {s.errore && ` — ${s.errore}`}
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         ))}
         {loading && <div className="bubble assistant muted">Sto consultando il diario…</div>}

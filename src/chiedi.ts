@@ -10,8 +10,15 @@ if (!domanda) {
 
 try {
   const start = performance.now();
-  const { risposta, passi } = await chiediAllAgente(domanda);
-  for (const p of passi) console.log(`🔧 ${p.nome}(${JSON.stringify(p.argomenti)})${p.errore ? ` ❌ ${p.errore}` : ""}`);
+  const { risposta, traccia } = await chiediAllAgente(domanda);
+  for (const p of traccia) {
+    if (p.tipo === "pensiero") console.log(`🧠 ${p.testo}`);
+    if (p.tipo === "guardrail") console.log(`🛡️ ${p.testo}`);
+    if (p.tipo === "tool") {
+      console.log(`🔧 ${p.nome}(${JSON.stringify(p.argomenti)})${p.errore ? ` ❌ ${p.errore}` : ""}`);
+      console.log(`   ↳ ${p.risultato}`);
+    }
+  }
   console.log(`\n💬 ${risposta}`);
   console.log(`\n⏱️ ${((performance.now() - start) / 1000).toFixed(1)}s`);
 } finally {

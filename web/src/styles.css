@@ -201,6 +201,17 @@ dd.tbd { color: var(--warn); font-style: italic; font-family: inherit; }
 .bubble { white-space: pre-line; }
 .errore { color: var(--warn); }
 
-/* Tool usati dall'agente, sotto la risposta */
-.strumenti { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border); font-size: 0.75rem; font-family: ui-monospace, monospace; color: var(--muted); }
-.strumenti .errore { color: var(--warn); }
+/* Traccia dell'agente: grigia e in corsivo sopra la risposta, come un pensiero */
+.traccia {
+  margin-bottom: 8px;
+  padding: 0 0 8px 10px;
+  border-left: 2px solid var(--border);
+  border-bottom: 1px dashed var(--border);
+  color: var(--muted);
+  font-style: italic;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+.traccia p { margin: 2px 0; white-space: pre-line; }
+.traccia .risultato { font-style: normal; font-family: ui-monospace, monospace; font-size: 0.72rem; word-break: break-all; }
+.traccia .guardrail, .traccia .errore { color: var(--warn); }

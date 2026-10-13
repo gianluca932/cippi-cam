@@ -41,8 +41,7 @@ app.post("/chat", async (c) => {
   const body = ChatRequest.safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ errore: "Serve { domanda: string, storia?: [...] }" }, 400);
 
-  const { risposta, passi } = await chiediAllAgente(body.data.domanda, body.data.storia);
-  return c.json<ChatApi>({ risposta, strumenti: passi });
+  return c.json<ChatApi>(await chiediAllAgente(body.data.domanda, body.data.storia));
 });
 
 app.onError((err, c) => {

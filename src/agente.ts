@@ -2,6 +2,7 @@ import { z } from "zod";
 import { cercaSimili, eventiDelGiorno, gabbiaDelGiorno } from "./db.js";
 import { episodi } from "./episodi.js";
 import { chatConTool, embed, type DefinizioneTool, type Messaggio } from "./ollama.js";
+import type { PassoTraccia } from "./api-types.js";
 import { AZIONI, MIN_CONFIDENCE } from "./schema.js";
 import { NOMI, UCCELLINI } from "./uccellini.js";
 
@@ -132,41 +133,61 @@ Regole:
 - Rispondi in italiano, breve e amichevole, con gli orari quando servono.
 /no_think`;
 
-// Qwen3 a volte scrive comunque il ragionamento prima della risposta: teniamo solo quello che viene dopo </think>.
-const pulisci = (testo: string) => testo.split("</think>").at(-1)!.trim();
+// Qwen3 a volte scrive il ragionamento nel testo, chiuso da </think>: lo separiamo dalla risposta.
+function separaPensiero(testo: string): { pensiero?: string; risposta: string } {
+  if (!testo.includes("</think>")) return { risposta: testo.trim() };
+  const [pensiero, ...resto] = testo.split("</think>");
+  return { pensiero: pensiero.replace("<think>", "").trim(), risposta: resto.join("").trim() };
+}
 
-export type PassoTool = { nome: string; argomenti: Record<string, unknown>; errore?: string };
+// Il risultato di un tool, accorciato per mostrarlo nella traccia.
+const abbrevia = (v: unknown, max = 220) => {
+  const json = JSON.stringify(v);
+  return json.length > max ? `${json.slice(0, max)}…` : json;
+};
+
 export type TurnoChat = { ruolo: "utente" | "assistente"; testo: string };
 
-export async function chiediAllAgente(domanda: string, storia: TurnoChat[] = []) {
+export async function chiediAllAgente(
+  domanda: string,
+  storia: TurnoChat[] = [],
+): Promise<{ risposta: string; traccia: PassoTraccia[] }> {
   const messages: Messaggio[] = [
     { role: "system", content: systemPrompt() },
     ...storia.map((t): Messaggio => ({ role: t.ruolo === "utente" ? "user" : "assistant", content: t.testo })),
     { role: "user", content: domanda },
   ];
-  const passi: PassoTool[] = [];
+  const traccia: PassoTraccia[] = [];
+  const toolUsati = () => traccia.some((p) => p.tipo === "tool");
   let pensa = false; // si accende solo se il modello prova a rispondere senza tool
 
   for (let giro = 0; giro < MAX_GIRI; giro++) {
     const risposta = await chatConTool(messages, DEFINIZIONI, pensa);
     messages.push({ role: "assistant", content: risposta.content, tool_calls: risposta.tool_calls });
 
+    const { pensiero: pensieroNelTesto, risposta: testo } = separaPensiero(risposta.content);
+    const pensiero = risposta.thinking?.trim() || pensieroNelTesto;
+    if (pensiero) traccia.push({ tipo: "pensiero", testo: pensiero });
+
     // Nessun tool richiesto: questa è la risposta finale...
     if (!risposta.tool_calls?.length) {
-      const testo = pulisci(risposta.content);
       // ...a meno che citi numeri o orari senza aver consultato il diario: quasi certamente inventati.
       // Guardrail nel codice, non nel prompt: un modello piccolo a volte ignora le regole del prompt.
-      if (passi.length === 0 && /\d/.test(testo)) {
+      if (!toolUsati() && /\d/.test(testo)) {
         if (pensa) {
           // Anche ragionando non ha usato tool: meglio nessuna risposta che una inventata.
-          return { risposta: "Non sono riuscito a consultare il diario per questa domanda. Prova a riformularla.", passi };
+          traccia.push({ tipo: "guardrail", testo: "Di nuovo una risposta senza consultare il diario: la scarto." });
+          return { risposta: "Non sono riuscito a consultare il diario per questa domanda. Prova a riformularla.", traccia };
         }
-        // Buttiamo la risposta inventata e riproviamo con il ragionamento acceso.
+        traccia.push({
+          tipo: "guardrail",
+          testo: "Risposta con numeri senza aver consultato il diario: la scarto e riprovo ragionando.",
+        });
         messages.pop();
         pensa = true;
         continue;
       }
-      return { risposta: testo, passi };
+      return { risposta: testo, traccia };
     }
 
     for (const chiamata of risposta.tool_calls) {
@@ -187,12 +208,12 @@ export async function chiediAllAgente(domanda: string, storia: TurnoChat[] = [])
       }
 
       const errore = (contenuto as { errore?: string }).errore;
-      passi.push({ nome: name, argomenti: args, ...(errore && { errore }) });
+      traccia.push({ tipo: "tool", nome: name, argomenti: argsPuliti, risultato: abbrevia(contenuto), ...(errore && { errore }) });
       messages.push({ role: "tool", tool_name: name, content: JSON.stringify(contenuto) });
     }
     // Il ragionamento serve a scegliere il tool; per scrivere la risposta finale basta la modalità veloce.
     pensa = false;
   }
 
-  return { risposta: "Non sono riuscito a trovare una risposta: troppi passaggi. Prova a riformulare.", passi };
+  return { risposta: "Non sono riuscito a trovare una risposta: troppi passaggi. Prova a riformulare.", traccia };
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ChatApi } from "../../src/api-types";
 
-export type { ChatApi, EventoApi, FotoApi, GiornoApi, UccellinoApi } from "../../src/api-types";
+export type { ChatApi, EventoApi, FotoApi, GiornoApi, PassoTraccia, UccellinoApi } from "../../src/api-types";
 
 export const MIN_CONFIDENCE = 0.6; // come in src/schema.ts
 

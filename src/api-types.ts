@@ -31,8 +31,13 @@ export type GiornoApi = {
   azioni: string[]; // azioni affidabili in ordine di tempo
 };
 
+// Cosa ha fatto l'agente prima di rispondere, in ordine: si mostra in grigio sopra la risposta.
+export type PassoTraccia =
+  | { tipo: "pensiero"; testo: string } // il ragionamento del modello, quando c'è
+  | { tipo: "tool"; nome: string; argomenti: Record<string, unknown>; risultato: string; errore?: string }
+  | { tipo: "guardrail"; testo: string }; // un intervento del codice sul modello
+
 export type ChatApi = {
   risposta: string;
-  // I tool che l'agente ha chiamato per rispondere, in ordine.
-  strumenti: { nome: string; argomenti: Record<string, unknown>; errore?: string }[];
+  traccia: PassoTraccia[];
 };

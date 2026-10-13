@@ -84,7 +84,8 @@ export type DefinizioneTool = {
 
 // pensa = ragionamento acceso: il modello sceglie i tool in modo più affidabile, ma è 2-3 volte più lento.
 export async function chatConTool(messages: Messaggio[], tools: DefinizioneTool[], pensa = false) {
-  const data = await post<{ message: { content: string; tool_calls?: ToolCall[] } } & ChatResponse>("/api/chat", {
+  // thinking: il ragionamento, presente solo con pensa = true.
+  const data = await post<{ message: { content: string; thinking?: string; tool_calls?: ToolCall[] } } & ChatResponse>("/api/chat", {
     model: AGENT_MODEL,
     stream: false,
     think: pensa,
