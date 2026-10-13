@@ -45,6 +45,7 @@ const TOOLS = [
           dalle: hhmm(e.dalle),
           alle: hhmm(e.alle),
           foto: e.foto,
+          ...(e.oggetti.length && { con: e.oggetti }),
         })),
       };
     },
@@ -91,23 +92,23 @@ const TOOLS = [
   ),
   tool(
     "stato_gabbia",
-    "Livello di acqua e cibo nell'ultima foto del giorno, e se durante il giorno sono stati scarsi o vuoti.",
+    "Livello di acqua e cibo e pulizia della gabbia: l'ultimo visto nel giorno e quante foto per livello.",
     z.object({ giorno: Giorno }),
     async ({ giorno = oggi() }) => {
       // Riassunto già calcolato: un modello piccolo sbaglia se deve dedurlo da una lista lunga.
       const foto = await gabbiaDelGiorno(giorno);
       if (!foto.length) return { giorno, nota: "Nessuna foto in questo giorno." };
-      const riassunto = (campo: "acqua" | "cibo") => {
-        const visibili = foto.filter((f) => f[campo] !== "non_visibile");
+      const riassunto = (campo: "acqua" | "cibo" | "pulizia") => {
+        const visibili = foto.filter((f) => f[campo] && f[campo] !== "non_visibile");
         const ultima = visibili.at(-1);
         const perLivello: Record<string, number> = {};
-        for (const f of foto) perLivello[f[campo]] = (perLivello[f[campo]] ?? 0) + 1;
+        for (const f of foto) if (f[campo]) perLivello[f[campo]!] = (perLivello[f[campo]!] ?? 0) + 1;
         return {
           ultimo_livello_visto: ultima ? `${ultima[campo]} alle ${hhmm(ultima.ora)}` : "mai visibile oggi",
           foto_per_livello: perLivello,
         };
       };
-      return { giorno, foto_analizzate: foto.length, acqua: riassunto("acqua"), cibo: riassunto("cibo") };
+      return { giorno, foto_analizzate: foto.length, acqua: riassunto("acqua"), cibo: riassunto("cibo"), pulizia: riassunto("pulizia") };
     },
   ),
 ];

@@ -6,7 +6,8 @@ ALTER TABLE eventi ADD COLUMN IF NOT EXISTS controllato_il TIMESTAMPTZ;
 
 -- La "verità" in un solo punto: l'azione umana se c'è, altrimenti quella del modello.
 -- Un evento controllato da una persona vale come confidenza 1.
-CREATE OR REPLACE VIEW eventi_effettivi AS
+DROP VIEW IF EXISTS eventi_effettivi;
+CREATE VIEW eventi_effettivi AS
 SELECT
   e.id,
   e.foto_id,

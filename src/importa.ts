@@ -1,10 +1,8 @@
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { extname, join, parse } from "node:path";
 import { parseArgs } from "node:util";
-import { chiudi, fotoEsiste, salvaAnalisi, sincronizzaUccellini } from "./db.js";
-import { VISION_MODEL } from "./ollama.js";
-import { analizza, oraScatto, RispostaNonValida, stampa } from "./pipeline.js";
+import { chiudi, sincronizzaUccellini } from "./db.js";
+import { importaFoto } from "./importazione.js";
 
 // Importa le foto nuove: converte in JPG da 1024px (data/foto/), legge l'ora di scatto, classifica e salva.
 // Le foto già nel database vengono saltate, quindi si può rilanciare quando si vuole.
@@ -13,11 +11,7 @@ import { analizza, oraScatto, RispostaNonValida, stampa } from "./pipeline.js";
 //      npm run importa -- --lista lista.txt      → i file elencati, uno per riga (# = commento)
 
 const ORIGINALI = "photos";
-const CONVERTITE = "data/foto";
 const ESTENSIONI = [".heic", ".jpg", ".jpeg", ".png"];
-const LATO_MAX = "1024"; // meno pixel = meno token per il modello di visione
-
-mkdirSync(CONVERTITE, { recursive: true });
 
 // File passati a riga di comando e/o in una lista, oppure tutta la cartella.
 const { values, positionals } = parseArgs({ options: { lista: { type: "string" } }, allowPositionals: true });
@@ -49,30 +43,15 @@ let importate = 0, saltate = 0, scartate = 0;
 try {
   await sincronizzaUccellini();
 
-  for (const [nome, originale] of perNome) {
-    const jpg = join(CONVERTITE, `${nome}.jpg`);
-    if (await fotoEsiste(jpg)) {
-      saltate++;
-      continue;
-    }
-
-    console.log(`\n===== ${originale}`);
-    if (!existsSync(jpg)) {
-      // sips è incluso in macOS: converte HEIC e ridimensiona.
-      execFileSync("sips", ["-s", "format", "jpeg", "-Z", LATO_MAX, originale, "--out", jpg], { stdio: "ignore" });
-    }
-
-    try {
-      const { analisi, embeddings } = await analizza(jpg);
-      stampa(analisi);
-      const ora = await oraScatto(originale);
-      const fotoId = await salvaAnalisi(analisi, jpg, ora, VISION_MODEL, embeddings);
-      console.log(`💾 Foto #${fotoId} (${ora.toLocaleString("it-IT")})`);
+  for (const originale of perNome.values()) {
+    const risultato = await importaFoto(originale);
+    if (risultato.esito === "presente") saltate++;
+    else if (risultato.esito === "importata") {
+      console.log(`💾 Foto #${risultato.fotoId} (${risultato.ora.toLocaleString("it-IT")})`);
       importate++;
-    } catch (err) {
+    } else {
       // Una risposta non valida non ferma l'import: la foto resta da riprovare al prossimo giro.
-      if (!(err instanceof RispostaNonValida)) throw err;
-      console.error("❌ Risposta scartata (schema non valido):", err.issues);
+      console.error("❌ Risposta scartata (schema non valido):", risultato.motivo);
       scartate++;
     }
   }

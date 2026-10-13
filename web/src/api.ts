@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import type { ChatApi, EventoChat } from "../../src/api-types";
+import type { ChatApi, EventoChat, StatoRegistrazione } from "../../src/api-types";
 
-export type { ChatApi, EventoApi, EventoChat, FotoApi, GiornoApi, PassoTraccia, UccellinoApi } from "../../src/api-types";
+export type { ChatApi, EventoApi, EventoChat, FotoApi, GiornoApi, PassoTraccia, ScattoApi, StatoRegistrazione, UccellinoApi } from "../../src/api-types";
 
 export const MIN_CONFIDENCE = 0.6; // come in src/schema.ts
 
@@ -67,6 +67,21 @@ async function invia(method: string, path: string, body?: unknown) {
 }
 export const correggiAzione = (id: number, azione: string) => invia("PATCH", `/eventi/${id}`, { azione });
 export const annullaCorrezione = (id: number) => invia("DELETE", `/eventi/${id}/correzione`);
+
+// Registrazione dalla pagina Live.
+async function post<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+  });
+  const dati = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(dati.errore ?? `${res.status}`);
+  return dati;
+}
+export const avviaRegistrazione = (opzioni: { ogniSec: number; durataMin: number; analizza: boolean; camera: string }) =>
+  post<StatoRegistrazione>("/registrazione/avvia", opzioni);
+export const fermaRegistrazione = () => post<StatoRegistrazione>("/registrazione/ferma");
 
 // Chat in streaming: legge gli eventi SSE man mano che il server li manda.
 // EventSource del browser funziona solo in GET, quindi leggiamo lo stream a mano con fetch.

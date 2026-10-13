@@ -392,3 +392,88 @@ button.icona.conferma:hover { color: #fff; background: var(--giusto); border-col
 @media (prefers-reduced-motion: reduce) {
   .card, .card:hover { transition: none; transform: none; }
 }
+
+.con-cosa { font-size: 0.75rem; color: var(--muted); padding-left: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.foto-grande-dettagli { margin: 12px 0 0; display: grid; gap: 6px; font-size: 0.85rem; }
+.foto-grande-dettagli > div { display: grid; grid-template-columns: 70px 1fr; gap: 8px; }
+.foto-grande-dettagli dt { font-weight: 600; color: var(--muted); }
+.foto-grande-dettagli dd { margin: 0; text-align: left; font-family: inherit; word-break: normal; }
+
+/* ---------- Live ---------- */
+.live { display: flex; flex-direction: column; gap: 14px; }
+.live-video {
+  position: relative;
+  background: #000;
+  border-radius: 14px;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  max-height: 62vh;
+  box-shadow: var(--ombra);
+}
+.live-video video { width: 100%; height: 100%; object-fit: contain; display: block; }
+.live-overlay { position: absolute; left: 12px; right: 12px; display: flex; justify-content: space-between; align-items: center; }
+.live-overlay.alto { top: 12px; }
+.live-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border-radius: 6px;
+  background: #d64545; color: #fff;
+  font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em;
+}
+.live-punto, .rec-punto { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.live-punto { background: #fff; animation: lampeggia 1.2s ease-in-out infinite; }
+.live-camera {
+  position: absolute; right: 12px; bottom: 12px;
+  font: inherit; font-size: 0.8rem;
+  color: #fff; background: rgb(0 0 0 / 0.55); border: 1px solid rgb(255 255 255 / 0.25);
+  border-radius: 8px; padding: 4px 8px;
+  backdrop-filter: blur(4px);
+}
+.live-errore { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; padding: 24px; text-align: center; }
+
+.live-stato {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 10px 14px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  font-size: 0.85rem;
+}
+.rec { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; letter-spacing: 0.05em; color: var(--muted); }
+.rec.attivo { color: #d64545; }
+.rec.attivo .rec-punto { animation: lampeggia 1.2s ease-in-out infinite; }
+.live-comando { font-family: ui-monospace, monospace; font-size: 0.78rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; }
+.live-sse { margin-left: auto; font-size: 0.75rem; color: var(--muted); }
+.live-sse.ok { color: var(--giusto); }
+
+.scatti { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(170px, 100%), 1fr)); gap: 10px; }
+.scatto { position: relative; margin: 0; border-radius: 10px; overflow: hidden; background: var(--bg); box-shadow: var(--ombra); }
+.scatto img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.scatto .chip-foto.ora { position: absolute; top: 6px; left: 6px; }
+.scatto figcaption { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; font-size: 0.75rem; }
+.scatto.nuovo { animation: entra 0.5s ease-out; box-shadow: 0 0 0 2px var(--accent), var(--ombra); }
+
+@keyframes lampeggia { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+@keyframes entra { from { opacity: 0; transform: translateY(-8px) scale(0.97); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .live-punto, .rec.attivo .rec-punto, .scatto.nuovo { animation: none; }
+}
+
+.live-controlli {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 12px 14px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  font-size: 0.85rem;
+}
+.live-controlli label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.live-controlli select {
+  font: inherit; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px;
+}
+.live-check input { accent-color: var(--accent); }
+.live-pulsante {
+  margin-left: auto;
+  font: inherit; font-weight: 600;
+  padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer;
+  background: #d64545; color: #fff;
+}
+.live-pulsante.ferma { background: var(--text); color: var(--panel); }
+.rec-tempo { font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.in-analisi { color: var(--accent); animation: pulsa 1.8s ease-in-out infinite; }

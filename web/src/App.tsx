@@ -5,10 +5,12 @@ import { Archivio } from "./pages/Archivio";
 import { ArchivioGiorno } from "./pages/ArchivioGiorno";
 import { Configurazione } from "./pages/Configurazione";
 import { Credits } from "./pages/Credits";
+import { Live } from "./pages/Live";
 import { Oggi } from "./pages/Oggi";
 
 const LINKS = [
   { to: "/", label: "Oggi" },
+  { to: "/live", label: "Live" },
   { to: "/archivio", label: "Archivio" },
   { to: "/configurazione", label: "Configurazione" },
   { to: "/credits", label: "Credits" },
@@ -63,6 +65,7 @@ export function App() {
       <div className="app">
         <Routes>
           <Route path="/" element={<Oggi />} />
+          <Route path="/live" element={<Live />} />
           <Route path="/archivio" element={<Archivio />} />
           <Route path="/archivio/:giorno" element={<ArchivioGiorno />} />
           <Route path="/configurazione" element={<Configurazione />} />

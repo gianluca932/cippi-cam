@@ -20,29 +20,37 @@ export const AZIONI = [
 ] as const;
 export type Azione = (typeof AZIONI)[number];
 
+// I .max() finiscono nel JSON Schema e quindi nella grammatica di Ollama: il modello NON può
+// superarli. È il modo per avere testi concreti senza allungare i tempi (ogni token costa ~50ms).
 export const EventoUccellino = z.object({
   colore: z.enum(COLORI),
-  posizione: z.string().min(1),
-  postura: z.string().min(1),
-  oggetti_vicini: z.array(z.string()),
-  descrizione: z.string().min(1),
+  posizione: z.string().min(1).max(50),
+  postura: z.string().min(1).max(60),
+  // L'oggetto con cui interagisce (campanellino, mangiatoia, specchio…) o "niente".
+  // Viene prima di azione: vedere l'oggetto aiuta a scegliere l'azione giusta.
+  con_cosa: z.string().min(1).max(30),
+  oggetti_vicini: z.array(z.string().max(25)).max(3),
+  descrizione: z.string().min(1).max(120),
   azione: z.enum(AZIONI),
   confidenza: z.number().min(0).max(1),
 });
 
 export const LIVELLI = ["abbondante", "sufficiente", "scarso", "vuoto", "non_visibile"] as const;
 export const LIVELLI_ALLARME: readonly Livello[] = ["scarso", "vuoto"];
+export const PULIZIA = ["pulita", "un_po_sporca", "sporca", "non_visibile"] as const;
 
 // Lo stato della gabbia: riguarda la foto, non il singolo uccellino.
+// Gli enum costano 2-3 token l'uno: informazioni utili quasi gratis.
 export const StatoGabbia = z.object({
-  note: z.string(), // cosa si vede di abbeveratoio e mangiatoia
+  note: z.string().max(80), // cosa si vede di abbeveratoio, mangiatoia e fondo
   acqua: z.enum(LIVELLI),
   cibo: z.enum(LIVELLI),
+  pulizia: z.enum(PULIZIA),
 });
 
 export const AnalisiFoto = z
   .object({
-    scena: z.string().min(1),
+    scena: z.string().min(1).max(100),
     gabbia: StatoGabbia,
     uccellini: z.array(EventoUccellino).length(COLORI.length),
   })

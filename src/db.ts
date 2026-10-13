@@ -48,8 +48,8 @@ export async function salvaAnalisi(
   try {
     await client.query("BEGIN");
     const { rows } = await client.query<{ id: number }>(
-      `INSERT INTO foto (percorso, ora, modello, scena, acqua, cibo, note_gabbia)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      `INSERT INTO foto (percorso, ora, modello, scena, acqua, cibo, note_gabbia, pulizia)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
       [
         percorso,
         ora,
@@ -58,6 +58,7 @@ export async function salvaAnalisi(
         analisi.gabbia.acqua,
         analisi.gabbia.cibo,
         analisi.gabbia.note,
+        analisi.gabbia.pulizia,
       ],
     );
     const fotoId = rows[0].id;
@@ -65,8 +66,8 @@ export async function salvaAnalisi(
     for (const [i, u] of analisi.uccellini.entries()) {
       await client.query(
         `INSERT INTO eventi
-           (foto_id, uccellino, azione, confidenza, descrizione, posizione, oggetti_vicini, postura, embedding_testo)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+           (foto_id, uccellino, azione, confidenza, descrizione, posizione, oggetti_vicini, postura, embedding_testo, con_cosa)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           fotoId,
           nomeDaColore(u.colore),
@@ -77,6 +78,7 @@ export async function salvaAnalisi(
           u.oggetti_vicini,
           u.postura,
           toVector(embeddings[i]),
+          u.con_cosa,
         ],
       );
     }
@@ -126,6 +128,7 @@ export type EventoDelGiorno = {
   ora: Date;
   uccellino: string;
   azione: string;
+  con_cosa: string | null; // null nelle foto importate prima di questo campo
   confidenza: number;
   descrizione: string;
 };
@@ -133,7 +136,7 @@ export type EventoDelGiorno = {
 // Tutti gli eventi di un giorno in ordine di tempo (gli incerti li scarta chi li usa).
 export async function eventiDelGiorno(giorno: string, uccellino?: string): Promise<EventoDelGiorno[]> {
   const { rows } = await pool.query<EventoDelGiorno>(
-    `SELECT f.ora, e.uccellino, e.azione, e.confidenza, e.descrizione
+    `SELECT f.ora, e.uccellino, e.azione, e.con_cosa, e.confidenza, e.descrizione
      FROM eventi_effettivi e JOIN foto f ON f.id = e.foto_id
      WHERE (f.ora AT TIME ZONE $1)::date = $2::date
        AND ($3::text IS NULL OR e.uccellino = $3)
@@ -143,12 +146,12 @@ export async function eventiDelGiorno(giorno: string, uccellino?: string): Promi
   return rows;
 }
 
-export type GabbiaInFoto = { ora: Date; acqua: string; cibo: string; note: string };
+export type GabbiaInFoto = { ora: Date; acqua: string; cibo: string; pulizia: string | null; note: string };
 
 // Acqua e cibo in tutte le foto di un giorno, in ordine di tempo.
 export async function gabbiaDelGiorno(giorno: string): Promise<GabbiaInFoto[]> {
   const { rows } = await pool.query<GabbiaInFoto>(
-    `SELECT ora, acqua, cibo, note_gabbia AS note FROM foto
+    `SELECT ora, acqua, cibo, pulizia, note_gabbia AS note FROM foto
      WHERE (ora AT TIME ZONE $1)::date = $2::date
      ORDER BY ora`,
     [FUSO, giorno],
@@ -179,12 +182,12 @@ export async function elencoGiorni(): Promise<GiornoApi[]> {
 
 export async function fotoDelGiorno(giorno: string): Promise<FotoApi[]> {
   const { rows } = await pool.query<FotoApi>(
-    `SELECT f.id, f.ora, f.scena, f.acqua, f.cibo, f.note_gabbia,
+    `SELECT f.id, f.ora, f.scena, f.acqua, f.cibo, f.pulizia, f.note_gabbia,
             json_agg(json_build_object(
               'id', e.id, 'nome', e.uccellino, 'colore', u.colore, 'azione', e.azione, 'confidenza', e.confidenza,
               'azione_modello', e.azione_modello, 'confidenza_modello', e.confidenza_modello,
               'azione_umana', e.azione_umana,
-              'descrizione', e.descrizione, 'posizione', e.posizione, 'postura', e.postura,
+              'descrizione', e.descrizione, 'posizione', e.posizione, 'postura', e.postura, 'con_cosa', e.con_cosa,
               'oggetti_vicini', e.oggetti_vicini
             ) ORDER BY e.uccellino) AS eventi
      FROM foto f
@@ -217,7 +220,7 @@ export async function eventiPerEmbedding(id?: number) {
     }
   >(
     `SELECT e.id, f.percorso, f.scena, e.uccellino, u.colore, e.azione, e.confidenza,
-            e.descrizione, e.posizione, e.oggetti_vicini, e.postura
+            e.descrizione, e.posizione, e.oggetti_vicini, e.postura, e.con_cosa
      FROM eventi_effettivi e JOIN foto f ON f.id = e.foto_id JOIN uccellini u ON u.nome = e.uccellino
      WHERE ($1::int IS NULL OR e.id = $1)
      ORDER BY e.id`,
@@ -258,6 +261,22 @@ export async function etichetteUmane(): Promise<Etichetta[]> {
      FROM eventi_effettivi e JOIN foto f ON f.id = e.foto_id
      WHERE e.azione_umana IS NOT NULL
      ORDER BY f.ora, e.uccellino`,
+  );
+  return rows;
+}
+
+export type FotoAnalizzata = { percorso: string; foto_id: number; eventi: { nome: string; azione: string }[] };
+
+// Quali di questi percorsi (data/foto/X.jpg) sono già nel diario, e con quali azioni.
+export async function fotoAnalizzate(percorsi: string[]): Promise<FotoAnalizzata[]> {
+  if (!percorsi.length) return [];
+  const { rows } = await pool.query<FotoAnalizzata>(
+    `SELECT f.percorso, f.id AS foto_id,
+            json_agg(json_build_object('nome', e.uccellino, 'azione', e.azione) ORDER BY e.uccellino) AS eventi
+     FROM foto f JOIN eventi_effettivi e ON e.foto_id = f.id
+     WHERE f.percorso = ANY($1)
+     GROUP BY f.id`,
+    [percorsi],
   );
   return rows;
 }

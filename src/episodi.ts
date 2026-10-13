@@ -10,6 +10,7 @@ export type Episodio = {
   dalle: Date;
   alle: Date;
   foto: number;
+  oggetti: string[]; // con cosa ha interagito durante l'episodio (es. "campanellino")
 };
 
 const PAUSA_MAX_MS = 2 * 60_000; // oltre 2 minuti senza foto, è un altro episodio
@@ -27,11 +28,13 @@ export function episodi(eventi: EventoDelGiorno[]): Episodio[] {
     const continua =
       corrente && corrente.azione === e.azione && e.ora.getTime() - corrente.alle.getTime() <= PAUSA_MAX_MS;
 
+    const oggetto = e.con_cosa && e.con_cosa !== "niente" ? e.con_cosa.toLowerCase() : null;
     if (continua) {
       corrente.alle = e.ora;
       corrente.foto++;
+      if (oggetto && !corrente.oggetti.includes(oggetto)) corrente.oggetti.push(oggetto);
     } else {
-      const nuovo = { uccellino: e.uccellino, azione: e.azione, dalle: e.ora, alle: e.ora, foto: 1 };
+      const nuovo = { uccellino: e.uccellino, azione: e.azione, dalle: e.ora, alle: e.ora, foto: 1, oggetti: oggetto ? [oggetto] : [] };
       risultato.push(nuovo);
       ultimoPer.set(e.uccellino, nuovo);
     }

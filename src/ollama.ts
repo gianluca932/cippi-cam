@@ -11,18 +11,21 @@ export const AGENT_MODEL = process.env.AGENT_MODEL ?? "qwen3.5:9b";
 
 const prompt = `Nella gabbia vivono ${COLORI.length} pappagallini (budgerigar), uno per colore: ${COLORI.join(", ")}.
 Guarda con attenzione tutta la gabbia, anche dietro posatoi, sbarre e giocattoli. Rispondi SOLO con JSON.
-- scena: una frase breve in italiano sulla scena generale
+Scrivi in italiano, frasi brevi e CONCRETE: nomina oggetti, colori e parti della gabbia, niente aggettivi generici.
+- scena: max 15 parole sulla scena generale
 - gabbia: lo stato della gabbia
-  - note: cosa vedi di abbeveratoio e mangiatoia (dove sono, quanto sono pieni)
+  - note: max 12 parole su abbeveratoio, mangiatoia e fondo (es. "abbeveratoio a destra mezzo pieno, fondo con semi sparsi")
   - acqua: livello dell'acqua, uno tra abbondante, sufficiente, scarso, vuoto, non_visibile
   - cibo: livello del cibo, uno tra abbondante, sufficiente, scarso, vuoto, non_visibile
-  Se non riesci a capire il livello (contenitore coperto o opaco), usa non_visibile: non tirare a indovinare.
+  - pulizia: fondo e posatoi, uno tra pulita, un_po_sporca, sporca, non_visibile
+  Se non riesci a capire un livello (contenitore coperto o opaco), usa non_visibile: non tirare a indovinare.
 - uccellini: SEMPRE ${COLORI.length} elementi, uno per colore (${COLORI.join(", ")}). Per ognuno, in quest'ordine:
   - colore: il colore del pappagallino che stai descrivendo
-  - posizione: dove si trova nella gabbia (es. "sul posatoio in alto a destra")
-  - postura: com'è il corpo, e soprattutto dove sono testa e becco (piume, ali, occhi)
-  - oggetti_vicini: lista degli oggetti visibili vicino a lui (es. ["mangiatoia", "pallina"])
-  - descrizione: una frase breve in italiano su cosa sta facendo
+  - posizione: max 6 parole (es. "posatoio alto, lato destro")
+  - postura: max 8 parole, soprattutto dove sono testa e becco (es. "testa girata, becco tra le piume dell'ala")
+  - con_cosa: l'oggetto che tocca con becco o zampe (es. "campanellino", "pallina gialla", "mangiatoia", "abbeveratoio", "specchio", "posatoio"); "niente" se non tocca nulla
+  - oggetti_vicini: fino a 3 oggetti vicini a lui
+  - descrizione: max 15 parole, cosa fa e con cosa (es. "becca il campanellino giallo appeso al soffitto")
   - azione: una tra mangia, beve, dorme, si_pulisce, gioca, vola, riposa, non_visibile
   - confidenza: numero tra 0 e 1 (quanto sei sicuro dell'azione; abbassala se è coperto o sfocato)
 Come riconoscere le azioni in una foto ferma (guarda soprattutto DOVE è la testa e il becco):
@@ -170,6 +173,7 @@ export function textForEmbedding(e: EventoUccellino, scena: string): string {
     `${nomeDaColore(e.colore)}, pappagallino ${e.colore}. Azione: ${e.azione.replace("_", " ")}.`,
     e.descrizione,
     `Posizione: ${e.posizione}.`,
+    e.con_cosa && e.con_cosa !== "niente" ? `Interagisce con: ${e.con_cosa}.` : "",
     e.oggetti_vicini.length ? `Oggetti vicini: ${e.oggetti_vicini.join(", ")}.` : "",
     `Postura: ${e.postura}.`,
     `Scena: ${scena}`,

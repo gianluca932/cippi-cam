@@ -75,10 +75,28 @@ function FotoGrande({ foto, onChiudi }: { foto: FotoApi | null; onChiudi: () => 
               {foto.eventi.map((e) => (
                 <span key={e.id} className={`etichetta-foto ${statoDi(e)}`}>
                   {e.nome}: {etichetta(e.azione)}
+                  {e.con_cosa && e.con_cosa !== "niente" && ` · ${e.con_cosa}`}
                 </span>
               ))}
-              <span className="muted">💧 {foto.acqua.replace("_", " ")} · 🌾 {foto.cibo.replace("_", " ")}</span>
+              <span className="muted">
+                💧 {foto.acqua.replace("_", " ")} · 🌾 {foto.cibo.replace("_", " ")}
+                {foto.pulizia && ` · 🧹 ${foto.pulizia.replaceAll("_", " ")}`}
+              </span>
             </div>
+            <dl className="foto-grande-dettagli">
+              {foto.eventi.map((e) => (
+                <div key={e.id}>
+                  <dt>{e.nome}</dt>
+                  <dd>{e.descrizione} <span className="muted">— {e.posizione}; {e.postura}</span></dd>
+                </div>
+              ))}
+              {foto.note_gabbia && (
+                <div>
+                  <dt>Gabbia</dt>
+                  <dd>{foto.note_gabbia}</dd>
+                </div>
+              )}
+            </dl>
           </figcaption>
         </figure>
       )}
@@ -109,6 +127,7 @@ function RigaEvento({ e, onCambia }: { e: EventoApi; onCambia: (azione: string |
             <option key={a} value={a}>{etichetta(a)}</option>
           ))}
         </select>
+        {e.con_cosa && e.con_cosa !== "niente" && <span className="con-cosa">con {e.con_cosa}</span>}
       </div>
       <div className="riga-azioni">
         {stato === "da-controllare" ? (
@@ -188,6 +207,9 @@ export function Gallery({ title, foto }: { title: string; foto: FotoApi[] }) {
               <span className="livelli-foto">
                 <Livello icona="💧" nome="acqua" valore={f.acqua} />
                 <Livello icona="🌾" nome="cibo" valore={f.cibo} />
+                {(f.pulizia === "sporca" || f.pulizia === "un_po_sporca") && (
+                  <span className="chip-foto livello allarme" title={`Gabbia ${f.pulizia.replaceAll("_", " ")}`}>🧹</span>
+                )}
               </span>
               <EtichetteFoto eventi={f.eventi} />
             </button>

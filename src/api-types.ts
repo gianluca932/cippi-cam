@@ -16,6 +16,7 @@ export type EventoApi = {
   posizione: string;
   postura: string;
   oggetti_vicini: string[];
+  con_cosa: string | null; // null nelle foto importate prima di questo campo
 };
 
 export type FotoApi = {
@@ -24,6 +25,7 @@ export type FotoApi = {
   scena: string;
   acqua: string;
   cibo: string;
+  pulizia: string | null;
   note_gabbia: string;
   eventi: EventoApi[];
 };
@@ -53,3 +55,26 @@ export type EventoChat =
   | { tipo: "testo"; testo: string } // un pezzetto della risposta
   | { tipo: "fine"; risposta: string; traccia: PassoTraccia[] } // la versione definitiva
   | { tipo: "errore"; messaggio: string };
+
+// Uno scatto della webcam (o una foto) nella cartella photos/, per la pagina Live.
+export type ScattoApi = {
+  nome: string; // nome del file in photos/
+  ora: string; // ISO, quando è stato salvato
+  analisi: { foto_id: number; eventi: { nome: string; azione: string }[] } | null; // null = da analizzare
+};
+
+// La registrazione avviata dalla pagina Live (scatti + coda di analisi).
+export type StatoRegistrazione = {
+  attiva: boolean;
+  camera: string | null;
+  ogniSec: number;
+  analizza: boolean;
+  avviataAlle: string | null; // ISO
+  fineAlle: string | null; // ISO
+  scattate: number;
+  analizzate: number;
+  scartate: number;
+  inAnalisi: string | null; // nome del file che il modello sta guardando
+  coda: string[]; // nomi dei file in attesa di analisi
+  errore: string | null; // l'ultimo errore (scatto o analisi)
+};

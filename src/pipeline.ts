@@ -33,8 +33,8 @@ export async function analizza(jpgPath: string) {
 
 export function stampa(analisi: AnalisiFoto) {
   console.log(`📷 ${analisi.scena}`);
-  const { acqua, cibo, note } = analisi.gabbia;
-  console.log(`🏠 acqua: ${acqua} · cibo: ${cibo} — ${note}`);
+  const { acqua, cibo, pulizia, note } = analisi.gabbia;
+  console.log(`🏠 acqua: ${acqua} · cibo: ${cibo} · pulizia: ${pulizia} — ${note}`);
   if (LIVELLI_ALLARME.includes(acqua)) console.warn(`🚨 Acqua ${acqua}: va controllata!`);
   if (LIVELLI_ALLARME.includes(cibo)) console.warn(`🚨 Cibo ${cibo}: va controllato!`);
 
@@ -42,7 +42,8 @@ export function stampa(analisi: AnalisiFoto) {
     // Secondo guardrail: la soglia di confidenza. L'evento si salva comunque,
     // ma chi legge il diario (galleria, agente) ignora quelli incerti.
     const flag = u.confidenza < MIN_CONFIDENCE ? "⚠️ incerto" : "✅";
-    console.log(`${flag} ${nomeDaColore(u.colore)} (${u.colore}): ${u.azione} (${u.confidenza}) — ${u.descrizione}`);
+    const conCosa = u.con_cosa !== "niente" ? ` [con: ${u.con_cosa}]` : "";
+    console.log(`${flag} ${nomeDaColore(u.colore)} (${u.colore}): ${u.azione}${conCosa} (${u.confidenza}) — ${u.descrizione}`);
   }
 }
 
