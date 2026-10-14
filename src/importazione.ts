@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { join, parse } from "node:path";
 import { fotoEsiste, salvaAnalisi } from "./db.js";
-import { VISION_MODEL } from "./ollama.js";
+import { VISION_MODEL } from "./modelli.js";
 import { analizza, oraScatto, RispostaNonValida, stampa } from "./pipeline.js";
 
 // Importa UNA foto nel diario: converte in JPG da 1024px (data/foto/), analizza, salva.

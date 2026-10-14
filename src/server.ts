@@ -1,3 +1,4 @@
+import "./env.js"; // per primo: carica .env prima che gli altri moduli leggano process.env
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { serve } from "@hono/node-server";
@@ -5,7 +6,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { streamSSE } from "hono/streaming";
 import type { ChatApi, EventoChat } from "./api-types.js";
-import { chiediAllAgente } from "./agente.js";
+import { chiediAllAgente } from "./agente/index.js";
 import {
   correggiEvento,
   elencoGiorni,
@@ -15,7 +16,8 @@ import {
   percorsoFoto,
   salvaEmbedding,
 } from "./db.js";
-import { embed, textForEmbedding } from "./ollama.js";
+import { configLlm } from "./llm.js";
+import { controllaEmbedding, embed, textForEmbedding } from "./modelli.js";
 import { avviaRegistrazione, fermaRegistrazione, statoRegistrazione } from "./registrazione.js";
 import { CARTELLA_SCATTI, nomeValido, ultimiScatti } from "./scatti.js";
 import { AZIONI, type Azione } from "./schema.js";
@@ -175,5 +177,9 @@ app.onError((err, c) => {
   console.error(err);
   return c.json({ errore: err.message }, 500);
 });
+
+// All'avvio: quale provider stiamo usando, e se gli embedding sono compatibili con il database.
+console.log(`🧠 Modelli: ${configLlm.provider} · visione ${configLlm.visione} · agente ${configLlm.agente} · embedding ${configLlm.embedding}`);
+controllaEmbedding().catch((err: Error) => console.error(`⚠️  ${err.message}`));
 
 serve({ fetch: app.fetch, port: PORT }, () => console.log(`🐦 API su http://localhost:${PORT}/api`));

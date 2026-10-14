@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { basename, extname } from "node:path";
 import { chiudi, eventiPerEmbedding } from "./db.js";
-import { embed, textForEmbedding } from "./ollama.js";
+import { embed, textForEmbedding } from "./modelli.js";
 
 // Confronta modelli di embedding sugli stessi eventi e sulle stesse domande (eval/ricerca.json).
 // Calcola tutto in memoria: il database non viene toccato.

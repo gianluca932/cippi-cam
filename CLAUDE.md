@@ -2,14 +2,14 @@
 
 Direttive per lavorare su questo repo. Valgono per ogni sessione. Il contesto del progetto è nel [README](README.md), la storia nel [CHANGELOG](CHANGELOG.md).
 
-**In breve:** diario di due pappagallini (Cippi giallo, Sky celeste). Webcam → modello di visione (`qwen3.5:9b` in Ollama) → output strutturato validato con Zod → Postgres + pgvector → API Hono → React. Una chat con un agente a tool interroga il diario. È uno **showcase di AI engineering**: le scelte devono essere spiegabili e **misurate**.
+**In breve:** diario di due pappagallini (Cippi giallo, Sky celeste). Webcam → modello di visione (`qwen3.5:9b` in Ollama, o Bedrock via env) → output strutturato validato con Zod → Postgres + pgvector → API Hono → React. Una chat con un agente LangChain/LangGraph a tool interroga il diario. È uno **showcase di AI engineering**: le scelte devono essere spiegabili e **misurate**.
 
 ---
 
 ## 1. Regole d'oro
 
 1. **Ogni commit ha una versione.** Vedi [§2](#2-versioning-a-ogni-commit). Nessuna eccezione.
-2. **Misura prima di cambiare prompt o modello.** Ogni modifica a `src/ollama.ts` (prompt), `src/schema.ts` o ai modelli si valuta con `npm run valuta` prima e dopo, e il risultato va nel CHANGELOG sotto **Misurato**. Il prompt "migliorato" senza misura ci è già costato metà dell'accuratezza (63% → 38%).
+2. **Misura prima di cambiare prompt o modello.** Ogni modifica a `src/modelli.ts` (prompt della visione), `src/schema.ts`, `src/agente/` o ai modelli si valuta con `npm run valuta` prima e dopo, e il risultato va nel CHANGELOG sotto **Misurato**. Il prompt "migliorato" senza misura ci è già costato metà dell'accuratezza (63% → 38%).
 3. **I guardrail stanno nel codice, non solo nel prompt.** Il prompt di un modello piccolo è fragile: una sola regola in più ("non usare markdown") ha fatto smettere l'agente di usare i tool. Validazione, rifiuti e fallback si scrivono in TypeScript.
 4. **La previsione del modello non si sovrascrive mai.** Le correzioni umane vanno in `azione_umana`; le letture passano dalla vista `eventi_effettivi`.
 5. **Zod è il contratto.** Ogni dato che entra dal mondo esterno (risposta del modello, argomenti dei tool, body HTTP, file di config) passa da uno schema Zod.
@@ -63,12 +63,14 @@ Fai commit e push **solo quando l'utente lo chiede**. Il repo non ha ancora un r
 | Responsabilità | File | Regola |
 |---|---|---|
 | Contratto dell'output del modello | `src/schema.ts` | Unica fonte; da qui escono JSON Schema (per Ollama) e tipi |
-| Chiamate ai modelli | `src/ollama.ts` | **Solo qui** si parla con Ollama. Futuro: interfaccia provider (Ollama, Bedrock) |
+| Quale provider e quali modelli | `src/llm.ts` | **Solo qui** si sceglie il provider (`LLM_PROVIDER=ollama|bedrock`) e si creano i modelli LangChain. Il resto del codice non sa se sotto c'è Ollama o Bedrock |
+| Visione ed embedding | `src/modelli.ts` | Prompt della visione; su Ollama chiamata **nativa** (un messaggio testo + immagine: LangChain lo spezza in due e peggiora l'accuratezza), su Bedrock `withStructuredOutput`; embedding con i prefissi; controllo delle dimensioni |
 | Query al database | `src/db.ts` | **Solo qui** c'è SQL. Il resto del codice non sa che sotto c'è Postgres |
 | Tipi condivisi con il frontend | `src/api-types.ts` | **Solo tipi**, nessun import di runtime (il browser li importa) |
 | Una foto nel diario | `src/importazione.ts` | Usato da `importa` e dalla registrazione. Su AWS diventa l'handler Lambda |
 | Webcam | `src/webcam.ts` | Unico punto che usa `imagesnap` |
-| Agente | `src/agente.ts` | Tool, guardrail, traccia, eventi di streaming |
+| Agente | `src/agente/` | `createAgent` (LangGraph): `strumenti.ts` (tool), `middleware.ts` (guardrail e regole), `prompt.ts`, `index.ts` (stream → eventi della chat) |
+| Variabili d'ambiente | `src/env.ts`, `.env.example` | `.env` caricato per primo; mai segreti nel codice |
 | API | `src/server.ts` | Sottile: valida, chiama i moduli, risponde |
 | Uccellini | `config/uccellini.json` | Nome ↔ colore; il modello non vede mai i nomi |
 
@@ -88,7 +90,16 @@ Fai commit e push **solo quando l'utente lo chiede**. Il repo non ha ancora un r
 
 ---
 
-## 7. Backend (Node + TypeScript)
+## 7. LangChain e LangGraph
+
+- **Modelli solo da `src/llm.ts`** (`modelloChat`, `modelloVisione`, `modelloEmbedding`), riusati con `unaVolta`. Mai `new ChatOllama(...)` sparsi nel codice: è quello che permette di cambiare provider con l'env.
+- **Tool con `tool()` di `langchain`** e uno schema Zod; `name` e `description` vanno scritti per il modello, che li legge per scegliere. Restituire JSON compatto e riassunti, non liste lunghe.
+- **Regole dell'agente come middleware** (`createMiddleware`): `wrapModelCall` per controllare o ripetere una chiamata al modello, `wrapToolCall` per gli argomenti e gli errori dei tool. Il ciclo modello ↔ tool non si riscrive a mano.
+- **Lo stream** dell'agente usa `streamMode: ["messages", "updates"]`: i token da "messages", tool e risposte finali da "updates". La risposta va in streaming solo dopo un tool (la trattiene il guardrail).
+- **Dopo ogni modifica a modelli, tool, middleware o prompt**: `npm run chiedi` sulle stesse domande di prima, confrontando tool scelti, risposte inventate e tempi.
+- Se si cambia `EMBED_MODEL`, `controllaEmbedding()` ferma server e import: serve una migrazione della colonna, non solo l'env.
+
+## 8. Backend (Node + TypeScript)
 
 **Linguaggio e moduli**
 - TypeScript `strict`, ESM con `module: NodeNext`: negli import relativi l'estensione è **`.js`** anche se il file è `.ts`.
@@ -119,11 +130,11 @@ Fai commit e push **solo quando l'utente lo chiede**. Il repo non ha ancora un r
 - Processi figli (`caffeinate`, `imagesnap`) si chiudono sempre (`kill` allo stop, `-w <pid>` per `caffeinate`).
 
 **Segreti**
-- Mai nel codice o nei commit. Configurazione da variabili d'ambiente (`DATABASE_URL`, `OLLAMA_URL`, `*_MODEL`); la password `cippi` di Docker è solo per lo sviluppo locale.
+- Mai nel codice o nei commit. Configurazione da variabili d'ambiente, documentate in `.env.example` (`DATABASE_URL`, `LLM_PROVIDER`, `OLLAMA_URL`, `*_MODEL`, `AWS_REGION`…); `.env` non va in git. Le credenziali AWS le trova l'SDK (SSO, profilo, ruolo IAM). La password `cippi` di Docker è solo per lo sviluppo locale.
 
 ---
 
-## 8. Frontend (React + Vite)
+## 9. Frontend (React + Vite)
 
 **Struttura**
 - Componenti funzione + hook. Pagine in `web/src/pages/`, componenti riusati in `web/src/components/`, chiamate all'API **solo** in `web/src/api.ts`.
@@ -154,7 +165,7 @@ Fai commit e push **solo quando l'utente lo chiede**. Il repo non ha ancora un r
 
 ---
 
-## 9. Valutazione
+## 10. Valutazione
 
 | Comando | Quando |
 |---|---|
@@ -168,7 +179,7 @@ Una misura su una foto sola **non** è un risultato: per le decisioni servono le
 
 ---
 
-## 10. Checklist prima di un commit
+## 11. Checklist prima di un commit
 
 - [ ] `npx tsc --noEmit -p .` (backend) e `cd web && npx tsc --noEmit && npm run build` (frontend) passano
 - [ ] Nuove migrazioni applicate due volte con `npm run db:migra`

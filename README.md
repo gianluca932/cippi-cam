@@ -1,6 +1,6 @@
 # Cippi Cam
 
-**Un diario automatico di due pappagallini, Cippi e Sky, costruito con un modello di visione, output strutturato validato con Zod, Postgres + pgvector e un agente con tool. Tutto gira in locale.**
+**Un diario automatico di due pappagallini, Cippi e Sky, costruito con un modello di visione, output strutturato validato con Zod, Postgres + pgvector e un agente LangChain/LangGraph con tool. Gira in locale con Ollama, e passa ad Amazon Bedrock cambiando una variabile d'ambiente.**
 
 Una webcam scatta una foto al minuto. Un modello di visione locale guarda la foto, dice cosa sta facendo ciascun uccellino (mangia, beve, si pulisce, gioca, riposa…) e com'è la gabbia (acqua, cibo, pulizia). Il risultato viene validato, salvato in Postgres con un embedding per la ricerca semantica, e si può interrogare in chat: *"quante volte ha mangiato Cippi oggi?"*, *"quando Sky era nascosto dietro il posatoio?"*, *"c'è abbastanza acqua?"*.
 
@@ -136,7 +136,22 @@ Perché Postgres e non un vector DB dedicato: i dati sono soprattutto **struttur
 
 ### 3. L'agente della chat
 
-[src/agente.ts](src/agente.ts): il modello riceve la domanda e quattro tool, decide quali chiamare, legge i risultati e risponde.
+[src/agente/](src/agente/): un agente **LangChain** (`createAgent`) che gira su un grafo **LangGraph**. Il modello riceve la domanda e quattro tool, decide quali chiamare, legge i risultati e risponde.
+
+```
+            ┌──────────── middleware: wrapModelCall ────────────┐
+domanda ──► │ modello: risponde o chiama un tool?                │ ──tool──► wrapToolCall ──► tool ──┐
+            │  · promptDelGiorno: system prompt con la data      │                                    │
+            │  · guardrail: numeri senza tool → riprova ragionando│ ◄──────────── torna al modello ◄───┘
+            └────────────────────────────────────────────────────┘ ──risposta──► fine
+```
+
+| File | Cosa contiene |
+|---|---|
+| [strumenti.ts](src/agente/strumenti.ts) | i 4 tool, definiti con `tool()` e uno schema Zod (l'equivalente del `@tool` di Python) |
+| [middleware.ts](src/agente/middleware.ts) | le regole agganciate al ciclo: prompt con la data, guardrail, pulizia degli argomenti |
+| [prompt.ts](src/agente/prompt.ts) | il system prompt |
+| [index.ts](src/agente/index.ts) | `createAgent` e la traduzione dello stream di LangGraph negli eventi della chat |
 
 | Tool | Sotto | Per domande tipo |
 |---|---|---|
@@ -148,15 +163,28 @@ Perché Postgres e non un vector DB dedicato: i dati sono soprattutto **struttur
 I guardrail stanno **nel codice, non solo nel prompt**:
 
 - **Argomenti dei tool validati con Zod** prima di toccare il database. Se il modello inventa un uccellino o passa una data sbagliata, riceve l'errore e si corregge (succede davvero, ed è nei log).
-- **Risposta con numeri senza aver usato un tool = scartata.** Il modello a volte risponde a memoria inventando orari. Il codice butta la risposta e riprova con il **ragionamento acceso** (`think: true`), solo per quella domanda. Se fallisce di nuovo, l'agente dice che non è riuscito a consultare il diario invece di inventare.
+- **Risposta con numeri senza aver usato un tool = scartata.** Il modello a volte risponde a memoria inventando orari. Un middleware `wrapModelCall` guarda la risposta e, se è sospetta, **ripete la stessa chiamata con il modello "ragionante"** (`think: true`), solo per quella domanda. La risposta scartata non entra mai nella conversazione. Se fallisce di nuovo, l'agente dice che non è riuscito a consultare il diario invece di inventare.
 - **Riassunti già calcolati** nei tool: un modello piccolo sbaglia se deve dedurre "l'acqua è sufficiente" da una lista di 30 valori, quindi il tool gli passa direttamente `ultimo_livello_visto`.
+
+### Provider intercambiabili: Ollama o Bedrock
+
+[src/llm.ts](src/llm.ts) è l'unico punto che sa quale provider stiamo usando. Il resto del codice chiede "il modello della chat", "il modello di visione", "gli embedding", e riceve oggetti LangChain con la stessa interfaccia:
+
+```bash
+LLM_PROVIDER=ollama     # default: qwen3.5:9b + nomic-embed-text in locale
+LLM_PROVIDER=bedrock    # Amazon Bedrock: AWS_REGION, VISION_MODEL, AGENT_MODEL, EMBED_MODEL
+```
+
+Le variabili stanno in `.env` (vedi [.env.example](.env.example)); le credenziali AWS le trova l'SDK (SSO, profilo, ruolo IAM), mai nel codice. Unico vincolo: **gli embedding di modelli diversi hanno dimensioni diverse** e non sono confrontabili, quindi cambiare `EMBED_MODEL` richiede una migrazione. All'avvio `controllaEmbedding()` confronta il modello con la colonna del database e si ferma con un messaggio chiaro, invece di salvare vettori incompatibili.
+
+**Un'eccezione misurata: la visione su Ollama non passa da LangChain.** `@langchain/ollama` (1.3.0) trasforma un messaggio "testo + immagine" in due messaggi separati, e per `qwen3.5:9b` è un input diverso: sulle stesse 32 etichette, 15 risposte giuste con un messaggio solo contro 8 con due. Quindi `classifyImage()` su Ollama manda la richiesta direttamente (testo e immagine insieme, `format` = schema Zod), mentre su Bedrock usa `withStructuredOutput`. L'agente invece resta tutto LangChain: misurato identico alla versione precedente.
 
 ### 4. Streaming con Server-Sent Events
 
 La chat usa **SSE** su `POST /api/chat/stream` ([src/server.ts](src/server.ts)):
 
 ```
-Ollama ──NDJSON, token per token──► agente ──SSE──► browser
+modello ──token──► LangGraph stream("messages" + "updates") ──► eventi della chat ──SSE──► browser
 ```
 
 - I pezzi di **ragionamento** vanno subito al browser.
@@ -236,7 +264,8 @@ Ogni modifica a prompt o modello si misura con [src/valuta.ts](src/valuta.ts) su
 
 | Livello | Tecnologia |
 |---|---|
-| Modelli | [Ollama](https://ollama.com) · `qwen3.5:9b` (visione + agente) · `nomic-embed-text` (embedding) |
+| Modelli | [Ollama](https://ollama.com) · `qwen3.5:9b` (visione + agente) · `nomic-embed-text` (embedding) · Amazon Bedrock via env |
+| Orchestrazione | [LangChain.js](https://js.langchain.com) (`createAgent`, `tool`, middleware, `withStructuredOutput`) · [LangGraph.js](https://langchain-ai.github.io/langgraphjs/) |
 | Validazione | [Zod 4](https://zod.dev): schema → JSON Schema → grammatica del modello |
 | Database | Postgres 17 + [pgvector](https://github.com/pgvector/pgvector) (HNSW) in Docker |
 | Backend | Node 20 · TypeScript · [Hono](https://hono.dev) · SSE |
@@ -297,7 +326,7 @@ Gli uccellini si configurano in [config/uccellini.json](config/uccellini.json):
 | `npm run confronta-embedding -- nomic-embed-text bge-m3` | confronta modelli di embedding su `eval/ricerca.json` |
 | `npm run db:up` / `db:migra` / `db:psql` | avvia Postgres, applica le migrazioni, apre la console SQL |
 
-Variabili d'ambiente utili: `VISION_MODEL`, `AGENT_MODEL`, `EMBED_MODEL`, `OLLAMA_URL`, `DATABASE_URL`, `DEBUG_AGENTE=1` (token e tempi di ogni chiamata dell'agente).
+Variabili d'ambiente: vedi [.env.example](.env.example) (`LLM_PROVIDER`, `VISION_MODEL`, `AGENT_MODEL`, `EMBED_MODEL`, `OLLAMA_URL`, `AWS_REGION`, `DATABASE_URL`…). Si mettono in `.env` o si passano davanti al comando (`LLM_PROVIDER=bedrock npm run valuta`).
 
 ---
 
@@ -314,14 +343,16 @@ eval/
 scripts/dev.mjs            avvia Postgres, API e interfaccia insieme
 src/
   schema.ts                il contratto Zod dell'output del modello
-  ollama.ts                tutte le chiamate ai modelli: visione, embedding, chat con tool (streaming)
+  env.ts                   carica .env per primo
+  llm.ts                   la fabbrica dei modelli: Ollama o Bedrock in base a LLM_PROVIDER
+  modelli.ts               visione (Ollama nativo, LangChain per Bedrock) ed embedding, controllo delle dimensioni
   pipeline.ts              foto → modello → Zod → embedding
   importazione.ts          importa una foto nel diario
   webcam.ts                trova la fotocamera e scatta
   registrazione.ts         registrazione dalla pagina Live: timer, coda, lavoratore
   db.ts                    tutte le query (il resto del codice non sa che sotto c'è Postgres)
   episodi.ts               eventi consecutivi → episodi
-  agente.ts                l'agente: tool, guardrail, traccia, eventi di streaming
+  agente/                  l'agente LangChain/LangGraph: tool, middleware (guardrail), prompt, stream → eventi
   server.ts                API Hono e stream SSE
   valuta.ts                misura dell'accuratezza e matrice di confusione
   importa.ts, scatta.ts, classify.ts, chiedi.ts, cerca.ts, confronta-embedding.ts   comandi da terminale
@@ -363,13 +394,14 @@ flowchart LR
 | cartella `photos/` | S3 |
 | coda in memoria | SQS, con retry e dead letter queue |
 | `importaFoto()` | handler della Lambda |
-| Ollama (`qwen3.5:9b`) | Bedrock (modello con visione + Titan/Cohere embeddings) |
+| Ollama (`qwen3.5:9b`) | Bedrock (modello con visione + Titan/Cohere embeddings): già pronto via `LLM_PROVIDER=bedrock` |
 | Postgres in Docker | RDS Postgres + pgvector |
 | server Hono | container su Fargate, o Lambda con `hono/aws-lambda` |
 
 Prossimi passi:
 
-- [ ] **Provider astratto** (Ollama | Bedrock) e la stessa `npm run valuta` sui due: accuratezza, tempo e **costo a foto**, locale contro cloud.
+- [x] **Provider astratto** (Ollama | Bedrock) con LangChain, scelto via env.
+- [ ] La stessa `npm run valuta` su Ollama e Bedrock: accuratezza, tempo e **costo a foto**, locale contro cloud.
 - [ ] **Voto a maggioranza** su scatti consecutivi, per stabilizzare le azioni e i conteggi degli episodi.
 - [ ] **Few-shot visivo** con le correzioni della galleria come esempi nel prompt.
 - [ ] **Embedding delle immagini (CLIP)** e confronto con la ricerca sulle descrizioni.

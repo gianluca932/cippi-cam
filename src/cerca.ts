@@ -1,5 +1,5 @@
 import { cercaSimili, chiudi } from "./db.js";
-import { embed } from "./ollama.js";
+import { embed } from "./modelli.js";
 
 // Uso: npm run cerca -- "uccellino nascosto dietro il posatoio"
 const domanda = process.argv.slice(2).join(" ");

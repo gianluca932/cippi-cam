@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join, parse } from "node:path";
 import { chiudi, etichetteUmane, type Etichetta } from "./db.js";
-import { VISION_MODEL } from "./ollama.js";
+import { VISION_MODEL } from "./modelli.js";
 import { analizza, RispostaNonValida } from "./pipeline.js";
 import { nomeDaColore } from "./uccellini.js";
 

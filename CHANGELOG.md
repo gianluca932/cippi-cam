@@ -7,6 +7,36 @@ Le sezioni **Misurato** riportano i risultati di `npm run valuta` e `npm run con
 
 ---
 
+## [0.11.0] — 2026-10-14 · Agente su LangChain/LangGraph e provider via env
+
+### Aggiunto
+- **Agente su LangChain + LangGraph** ([src/agente/](src/agente/)): `createAgent` costruisce il grafo modello ↔ tool al posto del ciclo `for` scritto a mano.
+  - `strumenti.ts`: i 4 tool con `tool()` e schemi Zod (l'equivalente del `@tool` di Python);
+  - `middleware.ts`: le regole come middleware. `promptDelGiorno` (system prompt con la data, a ogni chiamata), `guardrailRisposteInventate` (`wrapModelCall`: risposta con numeri senza tool → stessa chiamata con il modello "ragionante"), `argomentiPuliti` (`wrapToolCall`: via `""` e `null`, errori restituiti al modello);
+  - `index.ts`: stream di LangGraph con `streamMode: ["messages", "updates"]` tradotto negli eventi della chat. La firma di `chiediAllAgente` non cambia: server e chat non se ne accorgono.
+- **Fabbrica dei modelli** ([src/llm.ts](src/llm.ts)): `LLM_PROVIDER=ollama|bedrock` sceglie il provider per agente, visione ed embedding (`ChatOllama`/`ChatBedrockConverse`, `OllamaEmbeddings`/`BedrockEmbeddings`). Per Bedrock vanno indicati i modelli: se manca una variabile, errore chiaro.
+- **Configurazione da `.env`** ([src/env.ts](src/env.ts), [.env.example](.env.example)), caricato con `process.loadEnvFile()` senza librerie.
+- **Controllo degli embedding** (`controllaEmbedding`): all'avvio di server e import confronta le dimensioni del modello con la colonna `embedding_testo`, e si ferma con un messaggio chiaro se serve una migrazione.
+- Nella traccia della chat ora compare anche il **ragionamento** (🧠) quando il guardrail fa riprovare.
+
+### Modificato
+- `src/ollama.ts` è diventato [src/modelli.ts](src/modelli.ts): niente più chiamate dirette a Ollama per chat ed embedding.
+- **Visione su Ollama con chiamata nativa** (un solo messaggio testo + immagine), su Bedrock con `withStructuredOutput`.
+
+### Misurato
+| | Prima | Dopo |
+|---|---|---|
+| Agente, 8 domande | tool, argomenti e risposte | **identici**; guardrail sulle stesse 2 domande; tempi uguali (8–30 s) |
+| Visione, codice precedente (un messaggio), 31 foto · 60 etichette | **57%** (34/60) | — |
+| Visione via `@langchain/ollama` (due messaggi), stesse 32 etichette | 15/32 | **8/32** → scartata per Ollama |
+
+### Problemi noti
+- `@langchain/ollama` 1.3.0 spezza testo e immagine in due messaggi Ollama (`convertHumanGenericMessagesToOllama`). Nessuna segnalazione trovata: candidato a una issue upstream.
+- L'SDK AWS avvisa che le versioni pubblicate da gennaio 2027 richiederanno Node 22.
+- Webcam USB nuova ("CAMERA - UAC"): l'esposizione automatica non si lascia regolare (CameraController non ha effetto) e alcune foto escono scure.
+
+---
+
 ## [0.10.1] — 2026-10-13 · Changelog, CLAUDE.md e versioning
 
 ### Aggiunto

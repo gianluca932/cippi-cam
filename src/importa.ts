@@ -3,6 +3,7 @@ import { extname, join, parse } from "node:path";
 import { parseArgs } from "node:util";
 import { chiudi, sincronizzaUccellini } from "./db.js";
 import { importaFoto } from "./importazione.js";
+import { controllaEmbedding } from "./modelli.js";
 
 // Importa le foto nuove: converte in JPG da 1024px (data/foto/), legge l'ora di scatto, classifica e salva.
 // Le foto già nel database vengono saltate, quindi si può rilanciare quando si vuole.
@@ -42,6 +43,7 @@ for (const file of candidati) {
 let importate = 0, saltate = 0, scartate = 0;
 try {
   await sincronizzaUccellini();
+  await controllaEmbedding(); // si ferma subito se il modello di embedding non è compatibile con il database
 
   for (const originale of perNome.values()) {
     const risultato = await importaFoto(originale);

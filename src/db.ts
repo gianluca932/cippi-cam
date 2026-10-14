@@ -1,3 +1,4 @@
+import "./env.js"; // per primo: carica .env prima che gli altri moduli leggano process.env
 import pg from "pg";
 import type { FotoApi, GiornoApi, UccellinoApi } from "./api-types.js";
 import {
@@ -279,6 +280,15 @@ export async function fotoAnalizzate(percorsi: string[]): Promise<FotoAnalizzata
     [percorsi],
   );
   return rows;
+}
+
+// Quante dimensioni ha la colonna embedding_testo (per pgvector il "typmod" è proprio il numero di dimensioni).
+export async function dimensioniEmbeddingDb(): Promise<number | null> {
+  const { rows } = await pool.query<{ dimensioni: number }>(
+    `SELECT atttypmod AS dimensioni FROM pg_attribute
+     WHERE attrelid = 'eventi'::regclass AND attname = 'embedding_testo'`,
+  );
+  return rows[0]?.dimensioni ?? null;
 }
 
 export async function chiudi() {

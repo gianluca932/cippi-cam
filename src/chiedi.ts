@@ -1,4 +1,4 @@
-import { chiediAllAgente } from "./agente.js";
+import { chiediAllAgente } from "./agente/index.js";
 import { chiudi } from "./db.js";
 
 // Prova l'agente da terminale: npm run chiedi -- "quante volte ha mangiato Cippi oggi?"

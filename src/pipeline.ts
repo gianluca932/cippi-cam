@@ -1,30 +1,22 @@
 import { readFileSync, statSync } from "node:fs";
 import exifr from "exifr";
-import { classifyImage, embed, textForEmbedding } from "./ollama.js";
-import { AnalisiFoto, LIVELLI_ALLARME, MIN_CONFIDENCE } from "./schema.js";
+import { classifyImage, embed, textForEmbedding } from "./modelli.js";
+import { LIVELLI_ALLARME, MIN_CONFIDENCE, type AnalisiFoto } from "./schema.js";
 import { nomeDaColore } from "./uccellini.js";
 
 // Il cuore condiviso da classify e importa: foto → visione → Zod → embedding.
 
-const sec = (ns: number) => (ns / 1e9).toFixed(1) + "s";
+export { RispostaNonValida } from "./modelli.js";
 
-export class RispostaNonValida extends Error {
-  constructor(public raw: string, public issues: unknown) {
-    super("Risposta del modello non valida per lo schema");
-  }
-}
+const sec = (s?: number) => (s === undefined ? "?" : `${s.toFixed(1)}s`);
 
 export async function analizza(jpgPath: string) {
-  // 1. Gli occhi: il modello di visione guarda la foto.
+  // 1. Gli occhi: il modello di visione guarda la foto. La risposta arriva già validata con Zod
+  //    (se non rispetta lo schema, classifyImage lancia RispostaNonValida).
   const start = performance.now();
-  const { raw, timing } = await classifyImage(readFileSync(jpgPath).toString("base64"));
+  const { analisi, tempi } = await classifyImage(readFileSync(jpgPath).toString("base64"));
   console.log(`⏱️ Visione: ${((performance.now() - start) / 1000).toFixed(1)}s`
-    + ` (foto ${sec(timing.prompt_eval_duration)}, risposta ${sec(timing.eval_duration)}, ${timing.eval_count} token)`);
-
-  // Primo guardrail: lo schema Zod.
-  const parsed = AnalisiFoto.safeParse(JSON.parse(raw));
-  if (!parsed.success) throw new RispostaNonValida(raw, parsed.error.issues);
-  const analisi = parsed.data;
+    + ` (foto ${sec(tempi.secondiLettura)}, risposta ${sec(tempi.secondiRisposta)}, ${tempi.tokenRisposta ?? "?"} token)`);
 
   // 2. Un embedding per uccellino, per la ricerca semantica.
   const embeddings = await embed(analisi.uccellini.map((u) => textForEmbedding(u, analisi.scena)), "documento");
