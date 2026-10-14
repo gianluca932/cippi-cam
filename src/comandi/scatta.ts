@@ -1,5 +1,5 @@
 import { parseArgs } from "node:util";
-import { scattaFoto, trovaFotocamera } from "./webcam.js";
+import { scattaFoto, trovaFotocamera } from "../foto/webcam.js";
 
 // Scatta una foto dalla webcam ogni N secondi e la mette in photos/.
 // Poi npm run importa le classifica.

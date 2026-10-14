@@ -1,5 +1,5 @@
-import { chiediAllAgente } from "./agente/index.js";
-import { chiudi } from "./db.js";
+import { chiediAllAgente } from "../agente/index.js";
+import { chiudi } from "../db/db.js";
 
 // Prova l'agente da terminale: npm run chiedi -- "quante volte ha mangiato Cippi oggi?"
 const domanda = process.argv.slice(2).join(" ");

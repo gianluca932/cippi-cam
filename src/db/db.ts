@@ -1,14 +1,14 @@
-import "./env.js"; // per primo: carica .env prima che gli altri moduli leggano process.env
+import "../comune/env.js"; // per primo: carica .env prima che gli altri moduli leggano process.env
 import pg from "pg";
-import type { FotoApi, GiornoApi, UccellinoApi } from "./api-types.js";
+import type { FotoApi, GiornoApi, UccellinoApi } from "../comune/api-types.js";
 import {
   MIN_CONFIDENCE,
   type AnalisiFoto,
   type Azione,
   type EventoUccellino,
   type Livello,
-} from "./schema.js";
-import { nomeDaColore, UCCELLINI } from "./uccellini.js";
+} from "../modelli/schema.js";
+import { nomeDaColore, UCCELLINI } from "../comune/uccellini.js";
 
 // Tutte le query stanno qui: il resto del codice non sa che sotto c'è Postgres.
 const pool = new pg.Pool({

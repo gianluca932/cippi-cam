@@ -1,7 +1,7 @@
 import { parseArgs } from "node:util";
-import { cercaFotoSimili, cercaSimili, chiudi, embeddingImmagineDi } from "./db.js";
-import { embeddingTestoPerImmagini } from "./immagini.js";
-import { embed } from "./modelli.js";
+import { cercaFotoSimili, cercaSimili, chiudi, embeddingImmagineDi } from "../db/db.js";
+import { embeddingTestoPerImmagini } from "../modelli/immagini.js";
+import { embed } from "../modelli/modelli.js";
 
 // Ricerca semantica nel diario, in tre modi:
 //   npm run cerca -- "uccellino nascosto dietro il posatoio"     → nelle DESCRIZIONI scritte dal modello (testo)

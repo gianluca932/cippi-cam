@@ -1,14 +1,14 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { extname, join, parse } from "node:path";
 import { parseArgs } from "node:util";
-import { chiudi, fotoEsiste, sincronizzaUccellini } from "./db.js";
-import { CONVERTITE, importaFoto } from "./importazione.js";
-import { configLlm } from "./llm.js";
-import { controllaEmbedding } from "./modelli.js";
-import type { Fase } from "./pipeline.js";
-import { LIVELLI_ALLARME, MIN_CONFIDENCE, type AnalisiFoto } from "./schema.js";
-import { barra, c, durata, Spinner } from "./terminale.js";
-import { nomeDaColore } from "./uccellini.js";
+import { chiudi, fotoEsiste, sincronizzaUccellini } from "../db/db.js";
+import { CONVERTITE, importaFoto } from "../foto/importazione.js";
+import { configLlm } from "../modelli/llm.js";
+import { controllaEmbedding } from "../modelli/modelli.js";
+import type { Fase } from "../foto/pipeline.js";
+import { LIVELLI_ALLARME, MIN_CONFIDENCE, type AnalisiFoto } from "../modelli/schema.js";
+import { barra, c, durata, Spinner } from "../comune/terminale.js";
+import { nomeDaColore } from "../comune/uccellini.js";
 
 // Importa le foto nuove: converte in JPG da 1024px (data/foto/), legge l'ora di scatto, classifica e salva.
 // Le foto già nel database vengono saltate, quindi si può rilanciare quando si vuole.

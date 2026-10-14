@@ -1,5 +1,5 @@
-import { AZIONI } from "../schema.js";
-import { UCCELLINI } from "../uccellini.js";
+import { AZIONI } from "../modelli/schema.js";
+import { UCCELLINI } from "../comune/uccellini.js";
 import { ieri, oggi } from "./orari.js";
 
 // Il system prompt dell'agente. È lo stesso della versione senza LangChain, parola per parola:

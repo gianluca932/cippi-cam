@@ -1,9 +1,9 @@
 import { HumanMessage } from "@langchain/core/messages";
-import { dimensioniEmbeddingDb } from "./db.js";
+import { dimensioniEmbeddingDb } from "../db/db.js";
 import { configLlm, modelloEmbedding, modelloVisione, unaVolta } from "./llm.js";
 import { z } from "zod";
 import { AnalisiFoto, type EventoUccellino } from "./schema.js";
-import { COLORI, nomeDaColore } from "./uccellini.js";
+import { COLORI, nomeDaColore } from "../comune/uccellini.js";
 
 // Le due chiamate ai modelli della pipeline delle foto: visione (foto → JSON) ed embedding (testo → vettore).
 // Quale modello e quale provider (Ollama, Bedrock) lo decide src/llm.ts in base all'ambiente.

@@ -9,7 +9,7 @@ const Uccellino = z.object({
 });
 export type Uccellino = z.infer<typeof Uccellino>;
 
-const CONFIG_PATH = new URL("../config/uccellini.json", import.meta.url);
+const CONFIG_PATH = new URL("../../config/uccellini.json", import.meta.url);
 
 export const UCCELLINI = z
   .array(Uccellino)

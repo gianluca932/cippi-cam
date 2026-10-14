@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { basename, extname } from "node:path";
-import { chiudi, eventiPerEmbedding } from "./db.js";
-import { embed, textForEmbedding } from "./modelli.js";
+import { chiudi, eventiPerEmbedding } from "../db/db.js";
+import { embed, textForEmbedding } from "../modelli/modelli.js";
 
 // Confronta modelli di embedding sugli stessi eventi e sulle stesse domande (eval/ricerca.json).
 // Calcola tutto in memoria: il database non viene toccato.
@@ -11,7 +11,7 @@ type Caso = { domanda: string; attesi: string[] }; // "IMG_0719/Sky" = foto/ucce
 
 const modelli = process.argv.slice(2);
 if (!modelli.length) modelli.push("nomic-embed-text");
-const casi: Caso[] = JSON.parse(readFileSync(new URL("../eval/ricerca.json", import.meta.url), "utf8"));
+const casi: Caso[] = JSON.parse(readFileSync(new URL("../../eval/ricerca.json", import.meta.url), "utf8"));
 
 const coseno = (a: number[], b: number[]) => {
   let dot = 0, na = 0, nb = 0;

@@ -1,12 +1,12 @@
 import { readFileSync, statSync } from "node:fs";
 import exifr from "exifr";
-import { classifyImage, embed, textForEmbedding } from "./modelli.js";
-import { LIVELLI_ALLARME, MIN_CONFIDENCE, type AnalisiFoto } from "./schema.js";
-import { nomeDaColore } from "./uccellini.js";
+import { classifyImage, embed, textForEmbedding } from "../modelli/modelli.js";
+import { LIVELLI_ALLARME, MIN_CONFIDENCE, type AnalisiFoto } from "../modelli/schema.js";
+import { nomeDaColore } from "../comune/uccellini.js";
 
 // Il cuore condiviso da classify e importa: foto → visione → Zod → embedding.
 
-export { RispostaNonValida } from "./modelli.js";
+export { RispostaNonValida } from "../modelli/modelli.js";
 
 const sec = (s?: number) => (s === undefined ? "?" : `${s.toFixed(1)}s`);
 

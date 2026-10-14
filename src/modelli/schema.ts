@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { COLORI } from "./uccellini.js";
+import { COLORI } from "../comune/uccellini.js";
 
 // Il "contratto" tra il modello e il resto del codice.
 // Se la risposta del modello non rispetta questo schema, viene scartata.

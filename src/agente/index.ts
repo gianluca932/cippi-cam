@@ -1,6 +1,6 @@
 import { AIMessage, AIMessageChunk, createAgent, HumanMessage, ToolMessage, type BaseMessage } from "langchain";
-import type { EventoChat, PassoTraccia } from "../api-types.js";
-import { modelloChat } from "../llm.js";
+import type { EventoChat, PassoTraccia } from "../comune/api-types.js";
+import { modelloChat } from "../modelli/llm.js";
 import { argomentiPuliti, ContestoAgente, guardrailRisposteInventate, promptDelGiorno } from "./middleware.js";
 import { systemPrompt } from "./prompt.js";
 import { STRUMENTI } from "./strumenti.js";

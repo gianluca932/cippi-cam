@@ -1,6 +1,6 @@
 import { AIMessage, createMiddleware, ToolMessage } from "langchain";
 import { z } from "zod";
-import { modelloChat, unaVolta } from "../llm.js";
+import { modelloChat, unaVolta } from "../modelli/llm.js";
 import { systemPrompt } from "./prompt.js";
 
 // I middleware dell'agente: codice nostro che si aggancia al ciclo di LangGraph.

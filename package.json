@@ -1,22 +1,22 @@
 {
   "name": "cippi-cam",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "private": true,
   "type": "module",
   "scripts": {
-    "classify": "tsx src/classify.ts",
+    "classify": "tsx src/comandi/classify.ts",
     "db:up": "docker compose up -d",
     "db:psql": "docker compose exec db psql -U cippi cippi",
-    "cerca": "tsx src/cerca.ts",
-    "confronta-embedding": "tsx src/confronta-embedding.ts",
-    "importa": "tsx src/importa.ts",
-    "server": "tsx watch src/server.ts",
-    "valuta": "tsx src/valuta.ts",
-    "scatta": "caffeinate -di tsx src/scatta.ts",
-    "chiedi": "tsx src/chiedi.ts",
+    "cerca": "tsx src/comandi/cerca.ts",
+    "confronta-embedding": "tsx src/comandi/confronta-embedding.ts",
+    "importa": "tsx src/comandi/importa.ts",
+    "server": "tsx watch src/server/index.ts",
+    "valuta": "tsx src/comandi/valuta.ts",
+    "scatta": "caffeinate -di tsx src/comandi/scatta.ts",
+    "chiedi": "tsx src/comandi/chiedi.ts",
     "db:migra": "for f in db/migrazioni/*.sql; do echo \"→ $f\"; docker compose exec -T db psql -q -v ON_ERROR_STOP=1 -U cippi cippi < \"$f\" || exit 1; done",
     "dev": "node scripts/dev.mjs",
-    "embedding-immagini": "tsx src/embedding-immagini.ts"
+    "embedding-immagini": "tsx src/comandi/embedding-immagini.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.5",

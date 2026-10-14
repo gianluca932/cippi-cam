@@ -86,7 +86,7 @@ Il modello di visione e l'agente sono **lo stesso modello** (`qwen3.5:9b` in Oll
 
 ### 1. Visione con output strutturato
 
-**Lo schema Zod è il contratto** tra il modello e il resto del codice ([src/schema.ts](src/schema.ts)):
+**Lo schema Zod è il contratto** tra il modello e il resto del codice ([src/modelli/schema.ts](src/modelli/schema.ts)):
 
 ```ts
 export const EventoUccellino = z.object({
@@ -126,10 +126,10 @@ eventi    (id, foto_id, uccellino, azione, confidenza, descrizione, posizione, p
 
 - **Una riga per uccellino per foto**, così le domande sono SQL normale (`COUNT`, `GROUP BY`, filtri per data e nome).
 - **`embedding_testo`** con indice HNSW per la ricerca semantica sulle descrizioni (*"vicino allo specchio"*, *"nascosto"*).
-- **`embedding_immagine`**: l'impronta CLIP di ogni foto (512 numeri, [src/immagini.ts](src/immagini.ts)), calcolata in ~30 ms durante l'import con transformers.js e un modello di Hugging Face. Serve a cercare direttamente nelle foto (`npm run cerca -- --immagini`), a trovare foto simili, ed è la base per un futuro classificatore.
+- **`embedding_immagine`**: l'impronta CLIP di ogni foto (512 numeri, [src/modelli/immagini.ts](src/modelli/immagini.ts)), calcolata in ~30 ms durante l'import con transformers.js e un modello di Hugging Face. Serve a cercare direttamente nelle foto (`npm run cerca -- --immagini`), a trovare foto simili, ed è la base per un futuro classificatore.
 - **Ricerca ibrida**: similarità coseno di pgvector più filtri SQL nella stessa query (`WHERE uccellino = 'Sky' ORDER BY embedding <=> $1`).
 - **Vista `eventi_effettivi`**: definisce in un solo punto "qual è la verità" (la correzione umana se c'è, altrimenti il modello). Tutte le letture passano da lì.
-- **Episodi**: con una foto al minuto, "Cippi mangia per 5 minuti" sono 5 eventi ma **un** episodio. [src/episodi.ts](src/episodi.ts) unisce gli eventi consecutivi, così i conteggi hanno senso.
+- **Episodi**: con una foto al minuto, "Cippi mangia per 5 minuti" sono 5 eventi ma **un** episodio. [src/agente/episodi.ts](src/agente/episodi.ts) unisce gli eventi consecutivi, così i conteggi hanno senso.
 - **Migrazioni rilanciabili** (`npm run db:migra`): ogni file in `db/migrazioni/` si può applicare più volte senza errori.
 
 Perché Postgres e non un vector DB dedicato: i dati sono soprattutto **strutturati** (azioni, orari, nomi), e servono sia filtri esatti sia similarità. Tenerli nella stessa tabella permette query ibride senza sincronizzare due sistemi. Su AWS diventa RDS, che supporta pgvector.
@@ -168,7 +168,7 @@ I guardrail stanno **nel codice, non solo nel prompt**:
 
 ### Provider intercambiabili: Ollama o Bedrock
 
-[src/llm.ts](src/llm.ts) è l'unico punto che sa quale provider stiamo usando. Il resto del codice chiede "il modello della chat", "il modello di visione", "gli embedding", e riceve oggetti LangChain con la stessa interfaccia:
+[src/modelli/llm.ts](src/modelli/llm.ts) è l'unico punto che sa quale provider stiamo usando. Il resto del codice chiede "il modello della chat", "il modello di visione", "gli embedding", e riceve oggetti LangChain con la stessa interfaccia:
 
 ```bash
 LLM_PROVIDER=ollama     # default: qwen3.5:9b + nomic-embed-text in locale
@@ -181,7 +181,7 @@ Le variabili stanno in `.env` (vedi [.env.example](.env.example)); le credenzial
 
 ### 4. Streaming con Server-Sent Events
 
-La chat usa **SSE** su `POST /api/chat/stream` ([src/server.ts](src/server.ts)):
+La chat usa **SSE** su `POST /api/chat/stream` ([src/server/index.ts](src/server/index.ts)):
 
 ```
 modello ──token──► LangGraph stream("messages" + "updates") ──► eventi della chat ──SSE──► browser
@@ -195,7 +195,7 @@ La pagina Live usa invece `EventSource` nativo su `GET /api/scatti/stream`, che 
 
 ### 5. Registrazione live e coda di analisi
 
-[src/registrazione.ts](src/registrazione.ts): dalla pagina Live si avvia una registrazione che gira **sul server**, non nel browser (una scheda in background rallenterebbe i timer).
+[src/server/registrazione.ts](src/server/registrazione.ts): dalla pagina Live si avvia una registrazione che gira **sul server**, non nel browser (una scheda in background rallenterebbe i timer).
 
 ```
 ogni 60s:  scatta → photos/cam_….jpg ──► coda ──► lavoratore (una foto alla volta)
@@ -204,7 +204,7 @@ ogni 60s:  scatta → photos/cam_….jpg ──► coda ──► lavoratore (un
 
 - **Lo scatto non aspetta mai l'analisi**: se il modello è lento, la coda si allunga e poi recupera.
 - `caffeinate` tiene sveglio il Mac, legato al processo del server.
-- Scatto, analisi e coda sono moduli separati ([src/webcam.ts](src/webcam.ts), [src/importazione.ts](src/importazione.ts)) che corrispondono uno a uno ai pezzi della versione AWS: S3, SQS, Lambda.
+- Scatto, analisi e coda sono moduli separati ([src/foto/webcam.ts](src/foto/webcam.ts), [src/foto/importazione.ts](src/foto/importazione.ts)) che corrispondono uno a uno ai pezzi della versione AWS: S3, SQS, Lambda.
 
 ### 6. Human-in-the-loop: correzioni dalla galleria
 
@@ -218,7 +218,7 @@ ogni 60s:  scatta → photos/cam_….jpg ──► coda ──► lavoratore (un
 
 ## Valutazione: i numeri
 
-Ogni modifica a prompt o modello si misura con [src/valuta.ts](src/valuta.ts) sulle foto etichettate a mano (dal file [eval/classificazione.json](eval/classificazione.json) e dalle correzioni in galleria).
+Ogni modifica a prompt o modello si misura con [src/comandi/valuta.ts](src/comandi/valuta.ts) sulle foto etichettate a mano (dal file [eval/classificazione.json](eval/classificazione.json) e dalle correzioni in galleria).
 
 **Previsioni salvate contro le etichette** (`npm run valuta -- --salvate`, 22 etichette):
 
@@ -314,7 +314,7 @@ Gli uccellini si configurano in [config/uccellini.json](config/uccellini.json):
 | Comando | Cosa fa |
 |---|---|
 | `npm run dev` | Postgres + API + interfaccia insieme; Ctrl+C ferma tutto |
-| `npm run server` | solo l'API su `localhost:3001/api` (in watch: per registrazioni lunghe usa `npx tsx src/server.ts`) |
+| `npm run server` | solo l'API su `localhost:3001/api` (in watch: per registrazioni lunghe usa `npx tsx src/server/index.ts`) |
 | `cd web && npm run dev` | solo l'interfaccia su `localhost:5173` |
 | `npm run importa` | converte le foto nuove di `photos/` (anche HEIC), legge l'ora di scatto, classifica e salva |
 | `npm run importa -- photos/X.HEIC` | importa solo i file indicati (anche `--lista lista.txt`, una foto per riga) |
@@ -337,33 +337,27 @@ Variabili d'ambiente: vedi [.env.example](.env.example) (`LLM_PROVIDER`, `VISION
 ## Struttura del progetto
 
 ```
-config/uccellini.json      chi vive nella gabbia (nome ↔ colore)
+config/uccellini.json        chi vive nella gabbia (nome ↔ colore)
 db/
-  init.sql                 schema iniziale
-  migrazioni/              correzioni umane, dettagli (con_cosa, pulizia), vista eventi_effettivi
-eval/
-  classificazione.json     etichette a mano per valutare il classificatore
-  ricerca.json             domande con risposta attesa per valutare la ricerca semantica
-scripts/dev.mjs            avvia Postgres, API e interfaccia insieme
+  init.sql                   schema iniziale
+  migrazioni/                correzioni umane, dettagli, indice delle immagini, livelli della gabbia
+eval/                        etichette a mano e domande con risposta attesa, per le misure
+scripts/dev.mjs              avvia Postgres, API e interfaccia insieme
 src/
-  schema.ts                il contratto Zod dell'output del modello
-  env.ts                   carica .env per primo
-  llm.ts                   la fabbrica dei modelli: Ollama o Bedrock in base a LLM_PROVIDER
-  modelli.ts               visione (Ollama nativo, LangChain per Bedrock) ed embedding, controllo delle dimensioni
-  pipeline.ts              foto → modello → Zod → embedding
-  importazione.ts          importa una foto nel diario
-  webcam.ts                trova la fotocamera e scatta
-  registrazione.ts         registrazione dalla pagina Live: timer, coda, lavoratore
-  db.ts                    tutte le query (il resto del codice non sa che sotto c'è Postgres)
-  episodi.ts               eventi consecutivi → episodi
-  agente/                  l'agente LangChain/LangGraph: tool, middleware (guardrail), prompt, stream → eventi
-  server.ts                API Hono e stream SSE
-  valuta.ts                misura dell'accuratezza e matrice di confusione
-  importa.ts, scatta.ts, classify.ts, chiedi.ts, cerca.ts, confronta-embedding.ts   comandi da terminale
+  comandi/                   quello che si lancia con "npm run …": importa, scatta, classify, valuta,
+                             cerca, chiedi, confronta-embedding, embedding-immagini
+  server/                    l'API Hono (index.ts), la registrazione della pagina Live, gli scatti
+  foto/                      dalla webcam al diario: webcam.ts (scattare), importazione.ts (una foto),
+                             pipeline.ts (foto → visione → Zod → embedding)
+  modelli/                   tutto ciò che parla con un modello: llm.ts (fabbrica Ollama/Bedrock),
+                             modelli.ts (visione + embedding del testo), immagini.ts (CLIP), schema.ts (contratto Zod)
+  agente/                    la chat LangChain/LangGraph: tool, middleware (guardrail), prompt, episodi
+  db/                        db.ts: tutte le query (il resto del codice non sa che sotto c'è Postgres)
+  comune/                    env.ts (.env), uccellini.ts, api-types.ts (tipi condivisi col frontend), terminale.ts
 web/src/
-  pages/                   Oggi, Live, Archivio, Configurazione, Credits
-  components/              Gallery (correzioni, foto grande), Chat (streaming, traccia)
-  api.ts                   client delle API e lettura degli stream SSE
+  pages/                     Oggi, Live, Archivio, Configurazione, Credits
+  components/                Gallery (correzioni, foto grande), Chat (streaming, traccia)
+  api.ts                     client delle API e lettura degli stream SSE
 ```
 
 ---

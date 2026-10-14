@@ -1,9 +1,9 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { basename } from "node:path";
-import { sincronizzaUccellini } from "./db.js";
-import type { StatoRegistrazione } from "./api-types.js";
-import { importaFoto } from "./importazione.js";
-import { scattaFoto, trovaFotocamera } from "./webcam.js";
+import { sincronizzaUccellini } from "../db/db.js";
+import type { StatoRegistrazione } from "../comune/api-types.js";
+import { importaFoto } from "../foto/importazione.js";
+import { scattaFoto, trovaFotocamera } from "../foto/webcam.js";
 
 // La registrazione avviata dalla pagina Live: il server scatta una foto ogni N secondi
 // e la mette in coda; un "lavoratore" analizza le foto della coda una alla volta.

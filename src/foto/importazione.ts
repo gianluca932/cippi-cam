@@ -1,11 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { join, parse } from "node:path";
-import { fotoEsiste, salvaAnalisi, salvaEmbeddingImmagine } from "./db.js";
-import { embeddingImmagine } from "./immagini.js";
-import { VISION_MODEL } from "./modelli.js";
+import { fotoEsiste, salvaAnalisi, salvaEmbeddingImmagine } from "../db/db.js";
+import { embeddingImmagine } from "../modelli/immagini.js";
+import { VISION_MODEL } from "../modelli/modelli.js";
 import { analizza, oraScatto, RispostaNonValida, stampa, type AvvisoFase } from "./pipeline.js";
-import type { AnalisiFoto } from "./schema.js";
+import type { AnalisiFoto } from "../modelli/schema.js";
 
 // Importa UNA foto nel diario: converte in JPG da 1024px (data/foto/), analizza, salva.
 // Usato da `npm run importa` (tante foto) e dalla registrazione della pagina Live (una per scatto).

@@ -7,16 +7,24 @@ Le sezioni **Misurato** riportano i risultati di `npm run valuta` e `npm run con
 
 ---
 
+## [0.12.1] — 2026-10-14 · Codice diviso in cartelle
+
+### Modificato
+- `src/` diviso per compito: `comandi/` (un file per ogni `npm run …`), `server/`, `foto/`, `modelli/`, `agente/`, `db/`, `comune/`. Solo spostamenti (con `git mv`, la storia dei file resta): nessuna logica cambiata, i comandi `npm run …` sono gli stessi.
+- Import ricalcolati in automatico (69), percorsi verso `config/` ed `eval/`, script in `package.json`, tipi del frontend, README e CLAUDE.md aggiornati.
+
+---
+
 ## [0.12.0] — 2026-10-14 · Ricerca per immagini, correzioni di acqua e cibo, webcam nuova
 
 ### Aggiunto
-- **Impronte CLIP delle foto** ([src/immagini.ts](src/immagini.ts)): `Xenova/clip-vit-base-patch32` da Hugging Face con transformers.js, in Node sulla CPU, senza Ollama. 512 numeri a foto in ~30 ms, nella colonna `embedding_immagine` che esisteva dal primo schema.
+- **Impronte CLIP delle foto** ([src/modelli/immagini.ts](src/modelli/immagini.ts)): `Xenova/clip-vit-base-patch32` da Hugging Face con transformers.js, in Node sulla CPU, senza Ollama. 512 numeri a foto in ~30 ms, nella colonna `embedding_immagine` che esisteva dal primo schema.
   - calcolate in automatico a ogni import; `npm run embedding-immagini` per le foto già presenti;
   - migrazione 003: indice HNSW;
   - `npm run cerca -- --immagini "…"` (ricerca testo → foto, in inglese) e `--simili <id>` (foto simili).
 - **Correzione di acqua e cibo in galleria**: riga "Gabbia" con due pillole; ✓ conferma, ↺ annulla. Migrazione 004: `acqua_umana`, `cibo_umano`, vista `foto_effettive`; `PATCH /api/foto/:id/gabbia`. Il valore del modello non si sovrascrive mai.
 - **`valuta` misura anche la gabbia**, sia sulle previsioni salvate (`--salvate`) sia riclassificando.
-- **`importa` con avanzamento visuale**: barra, stima del tempo, una riga per fase (conversione, visione, embedding, salvataggio, impronta) con spinner e tempi, riassunto per foto. Senza librerie ([src/terminale.ts](src/terminale.ts)); senza terminale, righe semplici.
+- **`importa` con avanzamento visuale**: barra, stima del tempo, una riga per fase (conversione, visione, embedding, salvataggio, impronta) con spinner e tempi, riassunto per foto. Senza librerie ([src/comune/terminale.ts](src/comune/terminale.ts)); senza terminale, righe semplici.
 
 ### Modificato
 - **Livelli della gabbia ridotti** a una decisione: acqua e cibo `ok` / `da_rifornire` / `non_visibile` (prima 5 livelli). "da_rifornire" comprende "sta finendo": l'avviso deve arrivare prima che manchi. Migrazione 005 converte i valori salvati.
@@ -50,13 +58,13 @@ Le sezioni **Misurato** riportano i risultati di `npm run valuta` e `npm run con
   - `strumenti.ts`: i 4 tool con `tool()` e schemi Zod (l'equivalente del `@tool` di Python);
   - `middleware.ts`: le regole come middleware. `promptDelGiorno` (system prompt con la data, a ogni chiamata), `guardrailRisposteInventate` (`wrapModelCall`: risposta con numeri senza tool → stessa chiamata con il modello "ragionante"), `argomentiPuliti` (`wrapToolCall`: via `""` e `null`, errori restituiti al modello);
   - `index.ts`: stream di LangGraph con `streamMode: ["messages", "updates"]` tradotto negli eventi della chat. La firma di `chiediAllAgente` non cambia: server e chat non se ne accorgono.
-- **Fabbrica dei modelli** ([src/llm.ts](src/llm.ts)): `LLM_PROVIDER=ollama|bedrock` sceglie il provider per agente, visione ed embedding (`ChatOllama`/`ChatBedrockConverse`, `OllamaEmbeddings`/`BedrockEmbeddings`). Per Bedrock vanno indicati i modelli: se manca una variabile, errore chiaro.
-- **Configurazione da `.env`** ([src/env.ts](src/env.ts), [.env.example](.env.example)), caricato con `process.loadEnvFile()` senza librerie.
+- **Fabbrica dei modelli** ([src/modelli/llm.ts](src/modelli/llm.ts)): `LLM_PROVIDER=ollama|bedrock` sceglie il provider per agente, visione ed embedding (`ChatOllama`/`ChatBedrockConverse`, `OllamaEmbeddings`/`BedrockEmbeddings`). Per Bedrock vanno indicati i modelli: se manca una variabile, errore chiaro.
+- **Configurazione da `.env`** ([src/comune/env.ts](src/comune/env.ts), [.env.example](.env.example)), caricato con `process.loadEnvFile()` senza librerie.
 - **Controllo degli embedding** (`controllaEmbedding`): all'avvio di server e import confronta le dimensioni del modello con la colonna `embedding_testo`, e si ferma con un messaggio chiaro se serve una migrazione.
 - Nella traccia della chat ora compare anche il **ragionamento** (🧠) quando il guardrail fa riprovare.
 
 ### Modificato
-- `src/ollama.ts` è diventato [src/modelli.ts](src/modelli.ts): niente più chiamate dirette a Ollama per chat ed embedding.
+- `src/ollama.ts` è diventato [src/modelli/modelli.ts](src/modelli/modelli.ts): niente più chiamate dirette a Ollama per chat ed embedding.
 - **Visione su Ollama con chiamata nativa** (un solo messaggio testo + immagine), su Bedrock con `withStructuredOutput`.
 
 ### Misurato
@@ -111,7 +119,7 @@ Le sezioni **Misurato** riportano i risultati di `npm run valuta` e `npm run con
 ### Modificato
 - **Limiti di lunghezza** (`.max()`) su tutti i campi di testo dello schema: finiscono nella grammatica di Ollama, quindi il modello non può superarli.
 - Prompt con istruzioni più brevi e concrete per ogni campo.
-- Codice condiviso estratto in [src/webcam.ts](src/webcam.ts) (trovare la fotocamera, scattare) e [src/importazione.ts](src/importazione.ts) (importare una foto): li usano `scatta`, `importa` e la registrazione.
+- Codice condiviso estratto in [src/foto/webcam.ts](src/foto/webcam.ts) (trovare la fotocamera, scattare) e [src/foto/importazione.ts](src/foto/importazione.ts) (importare una foto): li usano `scatta`, `importa` e la registrazione.
 
 ### Corretto
 - Le migrazioni ora fanno `DROP VIEW` + `CREATE VIEW`: prima, rilanciare la 001 dopo la 002 falliva ("non puoi togliere colonne a una vista").
@@ -172,7 +180,7 @@ Le sezioni **Misurato** riportano i risultati di `npm run valuta` e `npm run con
 ### Aggiunto
 - **Agente con 4 tool**: `eventi_del_giorno`, `conta_eventi`, `cerca_momenti` (pgvector + filtri SQL: ricerca ibrida), `stato_gabbia`.
 - **Argomenti dei tool validati con Zod** prima di toccare il database; `""` e `null` vengono trattati come "non specificato".
-- **Episodi** ([src/episodi.ts](src/episodi.ts)): eventi consecutivi con la stessa azione diventano un solo episodio.
+- **Episodi** ([src/agente/episodi.ts](src/agente/episodi.ts)): eventi consecutivi con la stessa azione diventano un solo episodio.
 - **Guardrail**: una risposta con numeri senza aver usato un tool viene scartata e la domanda ripetuta con il ragionamento acceso; se fallisce di nuovo, l'agente dice che non è riuscito a consultare il diario.
 - Chat web con la storia della conversazione (domande successive tipo "e Sky?").
 - `npm run chiedi` per interrogare l'agente da terminale.
@@ -239,6 +247,6 @@ Le sezioni **Misurato** riportano i risultati di `npm run valuta` e `npm run con
 ## [0.1.0] — 2026-10-13 · Primo classificatore e interfaccia (`a943bc7`)
 
 ### Aggiunto
-- **Classificatore** ([src/classify.ts](src/classify.ts)): manda la foto a `qwen3.5:9b` in Ollama con output strutturato (`format` = JSON Schema generato da Zod), valida la risposta con Zod e misura i tempi (caricamento, lettura della foto, generazione).
+- **Classificatore** ([src/comandi/classify.ts](src/comandi/classify.ts)): manda la foto a `qwen3.5:9b` in Ollama con output strutturato (`format` = JSON Schema generato da Zod), valida la risposta con Zod e misura i tempi (caricamento, lettura della foto, generazione).
 - Contesto alzato a 8192 token: la foto da sola ne occupava circa 4000.
 - **Interfaccia React** (Vite + React Router) con le pagine Oggi, Archivio, Configurazione (locale/AWS) e Credits, ancora su dati di prova.

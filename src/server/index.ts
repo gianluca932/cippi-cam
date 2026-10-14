@@ -1,12 +1,12 @@
-import "./env.js"; // per primo: carica .env prima che gli altri moduli leggano process.env
+import "../comune/env.js"; // per primo: carica .env prima che gli altri moduli leggano process.env
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { z } from "zod";
 import { streamSSE } from "hono/streaming";
-import type { ChatApi, EventoChat } from "./api-types.js";
-import { chiediAllAgente } from "./agente/index.js";
+import type { ChatApi, EventoChat } from "../comune/api-types.js";
+import { chiediAllAgente } from "../agente/index.js";
 import {
   correggiEvento,
   correggiGabbia,
@@ -16,12 +16,12 @@ import {
   fotoDelGiorno,
   percorsoFoto,
   salvaEmbedding,
-} from "./db.js";
-import { configLlm } from "./llm.js";
-import { controllaEmbedding, embed, textForEmbedding } from "./modelli.js";
+} from "../db/db.js";
+import { configLlm } from "../modelli/llm.js";
+import { controllaEmbedding, embed, textForEmbedding } from "../modelli/modelli.js";
 import { avviaRegistrazione, fermaRegistrazione, statoRegistrazione } from "./registrazione.js";
 import { CARTELLA_SCATTI, nomeValido, ultimiScatti } from "./scatti.js";
-import { AZIONI, LIVELLI, type Azione } from "./schema.js";
+import { AZIONI, LIVELLI, type Azione } from "../modelli/schema.js";
 
 const PORT = Number(process.env.PORT ?? 3001);
 const app = new Hono().basePath("/api");

@@ -1,10 +1,10 @@
 import { tool } from "langchain";
 import { z } from "zod";
-import { cercaSimili, eventiDelGiorno, gabbiaDelGiorno } from "../db.js";
-import { episodi } from "../episodi.js";
-import { embed } from "../modelli.js";
-import { AZIONI, MIN_CONFIDENCE } from "../schema.js";
-import { NOMI } from "../uccellini.js";
+import { cercaSimili, eventiDelGiorno, gabbiaDelGiorno } from "../db/db.js";
+import { episodi } from "./episodi.js";
+import { embed } from "../modelli/modelli.js";
+import { AZIONI, MIN_CONFIDENCE } from "../modelli/schema.js";
+import { NOMI } from "../comune/uccellini.js";
 import { giornoEOra, hhmm, oggi } from "./orari.js";
 
 // I quattro tool dell'agente.

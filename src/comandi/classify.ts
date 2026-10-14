@@ -1,6 +1,6 @@
-import { chiudi, salvaAnalisi, sincronizzaUccellini } from "./db.js";
-import { VISION_MODEL } from "./modelli.js";
-import { analizza, oraScatto, RispostaNonValida, stampa } from "./pipeline.js";
+import { chiudi, salvaAnalisi, sincronizzaUccellini } from "../db/db.js";
+import { VISION_MODEL } from "../modelli/modelli.js";
+import { analizza, oraScatto, RispostaNonValida, stampa } from "../foto/pipeline.js";
 
 // Classifica una singola foto (già in JPG). Per importare tutta la cartella photos/ usa npm run importa.
 const args = process.argv.slice(2);

@@ -1,4 +1,4 @@
-import "./env.js"; // per primo: carica .env prima che gli altri moduli leggano process.env
+import "../comune/env.js"; // per primo: carica .env prima che gli altri moduli leggano process.env
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { Embeddings } from "@langchain/core/embeddings";
 import { ChatOllama, OllamaEmbeddings } from "@langchain/ollama";

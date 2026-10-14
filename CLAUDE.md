@@ -9,7 +9,7 @@ Direttive per lavorare su questo repo. Valgono per ogni sessione. Il contesto de
 ## 1. Regole d'oro
 
 1. **Ogni commit ha una versione.** Vedi [§2](#2-versioning-a-ogni-commit). Nessuna eccezione.
-2. **Misura prima di cambiare prompt o modello.** Ogni modifica a `src/modelli.ts` (prompt della visione), `src/schema.ts`, `src/agente/` o ai modelli si valuta con `npm run valuta` prima e dopo, e il risultato va nel CHANGELOG sotto **Misurato**. Il prompt "migliorato" senza misura ci è già costato metà dell'accuratezza (63% → 38%).
+2. **Misura prima di cambiare prompt o modello.** Ogni modifica a `src/modelli/modelli.ts` (prompt della visione), `src/modelli/schema.ts`, `src/agente/` o ai modelli si valuta con `npm run valuta` prima e dopo, e il risultato va nel CHANGELOG sotto **Misurato**. Il prompt "migliorato" senza misura ci è già costato metà dell'accuratezza (63% → 38%).
 3. **I guardrail stanno nel codice, non solo nel prompt.** Il prompt di un modello piccolo è fragile: una sola regola in più ("non usare markdown") ha fatto smettere l'agente di usare i tool. Validazione, rifiuti e fallback si scrivono in TypeScript.
 4. **La previsione del modello non si sovrascrive mai.** Le correzioni umane vanno in `azione_umana`; le letture passano dalla vista `eventi_effettivi`.
 5. **Zod è il contratto.** Ogni dato che entra dal mondo esterno (risposta del modello, argomenti dei tool, body HTTP, file di config) passa da uno schema Zod.
@@ -60,19 +60,21 @@ Fai commit e push **solo quando l'utente lo chiede**. Il repo non ha ancora un r
 
 ## 5. Architettura: dove va cosa
 
+Le cartelle di `src/`: `comandi/` (un file per ogni `npm run …`), `server/` (API e pagina Live), `foto/` (webcam → diario), `modelli/` (tutto ciò che chiama un modello, più lo schema Zod), `agente/` (la chat), `db/` (le query), `comune/` (env, uccellini, tipi condivisi, terminale). Un file nuovo va nella cartella del suo compito; un comando nuovo in `comandi/` più la riga in `package.json`.
+
 | Responsabilità | File | Regola |
 |---|---|---|
-| Contratto dell'output del modello | `src/schema.ts` | Unica fonte; da qui escono JSON Schema (per Ollama) e tipi |
-| Quale provider e quali modelli | `src/llm.ts` | **Solo qui** si sceglie il provider (`LLM_PROVIDER=ollama|bedrock`) e si creano i modelli LangChain. Il resto del codice non sa se sotto c'è Ollama o Bedrock |
-| Impronte delle immagini | `src/immagini.ts` | CLIP (Hugging Face, transformers.js, CPU): foto e frasi inglesi nello stesso spazio; modello in `data/modelli/` |
-| Visione ed embedding | `src/modelli.ts` | Prompt della visione; su Ollama chiamata **nativa** (un messaggio testo + immagine: LangChain lo spezza in due e peggiora l'accuratezza), su Bedrock `withStructuredOutput`; embedding con i prefissi; controllo delle dimensioni |
-| Query al database | `src/db.ts` | **Solo qui** c'è SQL. Il resto del codice non sa che sotto c'è Postgres |
-| Tipi condivisi con il frontend | `src/api-types.ts` | **Solo tipi**, nessun import di runtime (il browser li importa) |
-| Una foto nel diario | `src/importazione.ts` | Usato da `importa` e dalla registrazione. Su AWS diventa l'handler Lambda |
-| Webcam | `src/webcam.ts` | Unico punto che usa `imagesnap` |
+| Contratto dell'output del modello | `src/modelli/schema.ts` | Unica fonte; da qui escono JSON Schema (per Ollama) e tipi |
+| Quale provider e quali modelli | `src/modelli/llm.ts` | **Solo qui** si sceglie il provider (`LLM_PROVIDER=ollama|bedrock`) e si creano i modelli LangChain. Il resto del codice non sa se sotto c'è Ollama o Bedrock |
+| Impronte delle immagini | `src/modelli/immagini.ts` | CLIP (Hugging Face, transformers.js, CPU): foto e frasi inglesi nello stesso spazio; modello in `data/modelli/` |
+| Visione ed embedding | `src/modelli/modelli.ts` | Prompt della visione; su Ollama chiamata **nativa** (un messaggio testo + immagine: LangChain lo spezza in due e peggiora l'accuratezza), su Bedrock `withStructuredOutput`; embedding con i prefissi; controllo delle dimensioni |
+| Query al database | `src/db/db.ts` | **Solo qui** c'è SQL. Il resto del codice non sa che sotto c'è Postgres |
+| Tipi condivisi con il frontend | `src/comune/api-types.ts` | **Solo tipi**, nessun import di runtime (il browser li importa) |
+| Una foto nel diario | `src/foto/importazione.ts` | Usato da `importa` e dalla registrazione. Su AWS diventa l'handler Lambda |
+| Webcam | `src/foto/webcam.ts` | Unico punto che usa `imagesnap` |
 | Agente | `src/agente/` | `createAgent` (LangGraph): `strumenti.ts` (tool), `middleware.ts` (guardrail e regole), `prompt.ts`, `index.ts` (stream → eventi della chat) |
-| Variabili d'ambiente | `src/env.ts`, `.env.example` | `.env` caricato per primo; mai segreti nel codice |
-| API | `src/server.ts` | Sottile: valida, chiama i moduli, risponde |
+| Variabili d'ambiente | `src/comune/env.ts`, `.env.example` | `.env` caricato per primo; mai segreti nel codice |
+| API | `src/server/index.ts` | Sottile: valida, chiama i moduli, risponde |
 | Uccellini | `config/uccellini.json` | Nome ↔ colore; il modello non vede mai i nomi |
 
 ---
@@ -94,7 +96,7 @@ Fai commit e push **solo quando l'utente lo chiede**. Il repo non ha ancora un r
 
 ## 7. LangChain e LangGraph
 
-- **Modelli solo da `src/llm.ts`** (`modelloChat`, `modelloVisione`, `modelloEmbedding`), riusati con `unaVolta`. Mai `new ChatOllama(...)` sparsi nel codice: è quello che permette di cambiare provider con l'env.
+- **Modelli solo da `src/modelli/llm.ts`** (`modelloChat`, `modelloVisione`, `modelloEmbedding`), riusati con `unaVolta`. Mai `new ChatOllama(...)` sparsi nel codice: è quello che permette di cambiare provider con l'env.
 - **Tool con `tool()` di `langchain`** e uno schema Zod; `name` e `description` vanno scritti per il modello, che li legge per scegliere. Restituire JSON compatto e riassunti, non liste lunghe.
 - **Regole dell'agente come middleware** (`createMiddleware`): `wrapModelCall` per controllare o ripetere una chiamata al modello, `wrapToolCall` per gli argomenti e gli errori dei tool. Il ciclo modello ↔ tool non si riscrive a mano.
 - **Lo stream** dell'agente usa `streamMode: ["messages", "updates"]`: i token da "messages", tool e risposte finali da "updates". La risposta va in streaming solo dopo un tool (la trattiene il guardrail).
@@ -140,7 +142,7 @@ Fai commit e push **solo quando l'utente lo chiede**. Il repo non ha ancora un r
 
 **Struttura**
 - Componenti funzione + hook. Pagine in `web/src/pages/`, componenti riusati in `web/src/components/`, chiamate all'API **solo** in `web/src/api.ts`.
-- Tipi delle risposte importati da `src/api-types.ts` (via `api.ts`): non ridefinirli a mano.
+- Tipi delle risposte importati da `src/comune/api-types.ts` (via `api.ts`): non ridefinirli a mano.
 - `cd web && npx tsc --noEmit` e `npm run build` devono passare prima di ogni commit.
 
 **Stato**

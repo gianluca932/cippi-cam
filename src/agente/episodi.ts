@@ -1,5 +1,5 @@
-import type { EventoDelGiorno } from "./db.js";
-import { MIN_CONFIDENCE } from "./schema.js";
+import type { EventoDelGiorno } from "../db/db.js";
+import { MIN_CONFIDENCE } from "../modelli/schema.js";
 
 // Con una foto ogni 20 secondi, "Cippi mangia per 5 minuti" sono 15 eventi ma UN episodio.
 // Qui uniamo gli eventi affidabili consecutivi con la stessa azione.

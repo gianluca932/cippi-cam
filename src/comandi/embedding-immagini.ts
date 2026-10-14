@@ -1,5 +1,5 @@
-import { chiudi, fotoSenzaEmbeddingImmagine, salvaEmbeddingImmagine } from "./db.js";
-import { embeddingImmagine } from "./immagini.js";
+import { chiudi, fotoSenzaEmbeddingImmagine, salvaEmbeddingImmagine } from "../db/db.js";
+import { embeddingImmagine } from "../modelli/immagini.js";
 
 // Calcola l'impronta CLIP delle foto che non ce l'hanno ancora (quelle importate prima di CLIP).
 // Si può rilanciare quando si vuole: tocca solo le foto senza impronta.

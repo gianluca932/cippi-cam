@@ -1,10 +1,10 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join, parse } from "node:path";
-import { chiudi, etichetteGabbia, etichetteUmane, type Etichetta, type EtichettaGabbia } from "./db.js";
-import { VISION_MODEL } from "./modelli.js";
-import { analizza, RispostaNonValida } from "./pipeline.js";
-import { nomeDaColore } from "./uccellini.js";
+import { chiudi, etichetteGabbia, etichetteUmane, type Etichetta, type EtichettaGabbia } from "../db/db.js";
+import { VISION_MODEL } from "../modelli/modelli.js";
+import { analizza, RispostaNonValida } from "../foto/pipeline.js";
+import { nomeDaColore } from "../comune/uccellini.js";
 
 // Misura l'accuratezza del classificatore sulle foto etichettate a mano.
 // Le etichette vengono da eval/classificazione.json E dalle correzioni/conferme fatte in galleria.
@@ -110,7 +110,7 @@ async function valutaModello(etichette: Etichetta[], etichetteGabbia: EtichettaG
   type Attese = { azioni: Record<string, string>; gabbia: Partial<Record<Campo, string>> };
   const perFoto = new Map<string, Attese>();
   const attese = (nome: string) => perFoto.get(nome) ?? perFoto.set(nome, { azioni: {}, gabbia: {} }).get(nome)!;
-  const daFile: Caso[] = JSON.parse(readFileSync(new URL("../eval/classificazione.json", import.meta.url), "utf8"));
+  const daFile: Caso[] = JSON.parse(readFileSync(new URL("../../eval/classificazione.json", import.meta.url), "utf8"));
   for (const c of daFile) Object.assign(attese(c.foto).azioni, c.azioni);
   for (const e of etichette) attese(parse(e.percorso).name).azioni[e.uccellino] = e.azione_umana;
   for (const e of etichetteGabbia) {

@@ -1,7 +1,7 @@
 import { readdir, stat } from "node:fs/promises";
 import { extname, join, parse } from "node:path";
-import type { ScattoApi } from "./api-types.js";
-import { fotoAnalizzate } from "./db.js";
+import type { ScattoApi } from "../comune/api-types.js";
+import { fotoAnalizzate } from "../db/db.js";
 
 // Gli scatti nella cartella photos/ per la pagina Live: i più recenti, e se sono già nel diario.
 // Solo JPG/PNG: gli HEIC dell'iPhone il browser (Chrome) non li sa mostrare.
