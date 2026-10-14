@@ -477,3 +477,51 @@ button.icona.conferma:hover { color: #fff; background: var(--giusto); border-col
 .live-pulsante.ferma { background: var(--text); color: var(--panel); }
 .rec-tempo { font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums; }
 .in-analisi { color: var(--accent); animation: pulsa 1.8s ease-in-out infinite; }
+
+
+/* Menu delle azioni largo quanto il testo, con la freccia attaccata */
+.chip-azione { align-self: flex-start; width: auto; field-sizing: content; }
+
+/* Riga della gabbia: tre pillole su una riga, separata dagli uccellini */
+.riga-gabbia {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  padding: 8px 8px 2px;
+  border-top: 1px solid var(--border);
+}
+.gabbia-pillole { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.pillola {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 4px 2px 7px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: var(--bg);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.pillola:hover { border-color: var(--muted); }
+.pillola select {
+  appearance: none;
+  -webkit-appearance: none;
+  field-sizing: content;
+  border: none;
+  background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M1 1l3 3 3-3' fill='none' stroke='%236b746f' stroke-width='1.3'/%3E%3C/svg%3E") no-repeat right 2px center;
+  padding: 0 12px 0 0;
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+}
+.pillola select:focus-visible { outline: none; }
+.pillola:focus-within { border-color: var(--accent); }
+.pillola.spento { color: var(--muted); }
+.pillola.spento select { color: var(--muted); }
+.pillola.allarme { background: rgb(201 138 18 / 0.15); }
+.pillola.confermato { border-color: var(--giusto); }
+.pillola.corretto { border-color: var(--sbagliato); }

@@ -4,6 +4,7 @@ import {
   annullaCorrezione,
   COLORE_CSS,
   correggiAzione,
+  correggiGabbia,
   EMOJI,
   formatOra,
   MIN_CONFIDENCE,
@@ -11,15 +12,86 @@ import {
   type FotoApi,
 } from "../api";
 
-const ALLARME = ["scarso", "vuoto"];
+const ALLARME = ["da_rifornire"];
 const etichetta = (azione: string) => `${EMOJI[azione] ?? ""} ${azione.replace("_", " ")}`;
 
 function Livello({ icona, nome, valore }: { icona: string; nome: string; valore: string }) {
   const tipo = ALLARME.includes(valore) ? "allarme" : valore === "non_visibile" ? "spento" : "";
   return (
     <span className={`chip-foto livello ${tipo}`} title={`${nome}: ${valore.replace("_", " ")}`}>
-      {icona} {valore === "non_visibile" ? "?" : valore}
+      {icona} {valore === "non_visibile" ? "?" : valore.replace("_", " ")}
     </span>
+  );
+}
+
+// --- Gabbia: acqua e cibo ---
+
+const CAMPI_GABBIA = [
+  { chiave: "acqua", icona: "💧", nome: "acqua", valori: ["ok", "da_rifornire", "non_visibile"] },
+  { chiave: "cibo", icona: "🌾", nome: "cibo", valori: ["ok", "da_rifornire", "non_visibile"] },
+] as const;
+type CampoGabbia = (typeof CAMPI_GABBIA)[number]["chiave"];
+type ValoriGabbia = Partial<Record<CampoGabbia, string | null>>;
+
+const modelloDi = (f: FotoApi, campo: CampoGabbia) =>
+  ({ acqua: f.acqua_modello, cibo: f.cibo_modello })[campo];
+const umanoDi = (f: FotoApi, campo: CampoGabbia) =>
+  ({ acqua: f.acqua_umana, cibo: f.cibo_umano })[campo];
+
+const etichettaLivello = (v: string) => (v === "non_visibile" ? "non visto" : v.replace("_", " "));
+const ALLARMI_GABBIA = ["da_rifornire"];
+
+// La gabbia: una riga sola con due pillole (acqua, cibo), ognuna un menu compatto.
+// Pillola arancione = da rifornire; bordo verde = confermato da te, rosso = corretto da te.
+function RigaGabbia({ f, onCambia }: { f: FotoApi; onCambia: (valori: ValoriGabbia) => void }) {
+  const controllati = CAMPI_GABBIA.filter(({ chiave }) => umanoDi(f, chiave) !== null);
+  const stato = controllati.length === 0 ? "da-controllare" : "controllato";
+
+  return (
+    <div className="riga-gabbia" title={f.note_gabbia}>
+      <span className="riga-nome">Gabbia</span>
+      <div className="gabbia-pillole">
+        {CAMPI_GABBIA.map(({ chiave, icona, nome, valori }) => {
+          const valore = f[chiave] ?? "non_visibile";
+          const umano = umanoDi(f, chiave);
+          const verifica = umano === null ? "" : umano === modelloDi(f, chiave) ? "confermato" : "corretto";
+          const allarme = ALLARMI_GABBIA.includes(valore) ? "allarme" : valore === "non_visibile" ? "spento" : "";
+          return (
+            <label
+              key={chiave}
+              className={`pillola ${allarme} ${verifica}`}
+              title={`${nome}${umano !== null ? ` · il modello diceva: ${etichettaLivello(modelloDi(f, chiave) ?? "?")}` : ""}`}
+            >
+              <span aria-hidden>{icona}</span>
+              <select value={valore} onChange={(ev) => onCambia({ [chiave]: ev.target.value })} aria-label={nome}>
+                {valori.map((v) => (
+                  <option key={v} value={v}>{etichettaLivello(v)}</option>
+                ))}
+              </select>
+            </label>
+          );
+        })}
+      </div>
+      {stato === "da-controllare" ? (
+        <button
+          type="button"
+          className="icona conferma"
+          title="È giusto: conferma acqua e cibo"
+          onClick={() => onCambia(Object.fromEntries(CAMPI_GABBIA.map(({ chiave }) => [chiave, modelloDi(f, chiave) ?? "non_visibile"])))}
+        >
+          ✓
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="icona"
+          title="Annulla: torna a quello che diceva il modello"
+          onClick={() => onCambia({ acqua: null, cibo: null })}
+        >
+          ↺
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -80,7 +152,6 @@ function FotoGrande({ foto, onChiudi }: { foto: FotoApi | null; onChiudi: () => 
               ))}
               <span className="muted">
                 💧 {foto.acqua.replace("_", " ")} · 🌾 {foto.cibo.replace("_", " ")}
-                {foto.pulizia && ` · 🧹 ${foto.pulizia.replaceAll("_", " ")}`}
               </span>
             </div>
             <dl className="foto-grande-dettagli">
@@ -182,6 +253,30 @@ export function Gallery({ title, foto }: { title: string; foto: FotoApi[] }) {
     }
   }
 
+  // Correzione della gabbia: stesso schema ottimistico delle azioni.
+  async function cambiaGabbia(f: FotoApi, valori: ValoriGabbia) {
+    const prima = f;
+    const umanoCampo = { acqua: "acqua_umana", cibo: "cibo_umano" } as const;
+    setLocali((fs) =>
+      fs.map((ft) => {
+        if (ft.id !== f.id) return ft;
+        const nuova = { ...ft };
+        for (const [campo, valore] of Object.entries(valori) as [CampoGabbia, string | null][]) {
+          nuova[umanoCampo[campo]] = valore;
+          nuova[campo] = (valore ?? modelloDi(ft, campo) ?? "non_visibile") as never;
+        }
+        return nuova;
+      }),
+    );
+    setErrore(undefined);
+    try {
+      await correggiGabbia(f.id, valori);
+    } catch (err) {
+      setLocali((fs) => fs.map((ft) => (ft.id === f.id ? prima : ft))); // si torna com'era
+      setErrore(`Correzione della gabbia non salvata: ${(err as Error).message}`);
+    }
+  }
+
   const controllati = locali.flatMap((f) => f.eventi).filter((e) => e.azione_umana !== null).length;
   const totale = locali.reduce((n, f) => n + f.eventi.length, 0);
 
@@ -207,9 +302,6 @@ export function Gallery({ title, foto }: { title: string; foto: FotoApi[] }) {
               <span className="livelli-foto">
                 <Livello icona="💧" nome="acqua" valore={f.acqua} />
                 <Livello icona="🌾" nome="cibo" valore={f.cibo} />
-                {(f.pulizia === "sporca" || f.pulizia === "un_po_sporca") && (
-                  <span className="chip-foto livello allarme" title={`Gabbia ${f.pulizia.replaceAll("_", " ")}`}>🧹</span>
-                )}
               </span>
               <EtichetteFoto eventi={f.eventi} />
             </button>
@@ -217,6 +309,7 @@ export function Gallery({ title, foto }: { title: string; foto: FotoApi[] }) {
               {f.eventi.map((e) => (
                 <RigaEvento key={e.id} e={e} onCambia={(azione) => cambia(e, azione)} />
               ))}
+              <RigaGabbia f={f} onCambia={(valori) => cambiaGabbia(f, valori)} />
               <p className="scena">{f.scena}</p>
             </div>
           </article>

@@ -126,7 +126,7 @@ eventi    (id, foto_id, uccellino, azione, confidenza, descrizione, posizione, p
 
 - **Una riga per uccellino per foto**, così le domande sono SQL normale (`COUNT`, `GROUP BY`, filtri per data e nome).
 - **`embedding_testo`** con indice HNSW per la ricerca semantica sulle descrizioni (*"vicino allo specchio"*, *"nascosto"*).
-- **`embedding_immagine`** è già prevista (CLIP), per confrontare la ricerca sulle descrizioni con quella direttamente sulle immagini.
+- **`embedding_immagine`**: l'impronta CLIP di ogni foto (512 numeri, [src/immagini.ts](src/immagini.ts)), calcolata in ~30 ms durante l'import con transformers.js e un modello di Hugging Face. Serve a cercare direttamente nelle foto (`npm run cerca -- --immagini`), a trovare foto simili, ed è la base per un futuro classificatore.
 - **Ricerca ibrida**: similarità coseno di pgvector più filtri SQL nella stessa query (`WHERE uccellino = 'Sky' ORDER BY embedding <=> $1`).
 - **Vista `eventi_effettivi`**: definisce in un solo punto "qual è la verità" (la correzione umana se c'è, altrimenti il modello). Tutte le letture passano da lì.
 - **Episodi**: con una foto al minuto, "Cippi mangia per 5 minuti" sono 5 eventi ma **un** episodio. [src/episodi.ts](src/episodi.ts) unisce gli eventi consecutivi, così i conteggi hanno senso.
@@ -212,6 +212,7 @@ ogni 60s:  scatta → photos/cam_….jpg ──► coda ──► lavoratore (un
 - **Confermare** conta quanto correggere: senza conferme il set di valutazione conterrebbe solo errori.
 - Correggere aggiorna subito galleria e agente (tramite la vista) e **ricalcola l'embedding**, il cui testo contiene l'azione.
 - Le correzioni diventano **etichette** per `npm run valuta`.
+- Lo stesso vale per **acqua e cibo** (`acqua_umana`, `cibo_umano`, vista `foto_effettive`), con due soli livelli legati a una decisione: `ok` / `da_rifornire` (+ `non_visibile`).
 
 ---
 
@@ -320,9 +321,12 @@ Gli uccellini si configurano in [config/uccellini.json](config/uccellini.json):
 | `npm run scatta -- --ogni 60 --durata 60` | foto dalla webcam in `photos/` (lo stesso si fa dalla pagina Live) |
 | `npm run classify -- data/foto/X.jpg --dry-run` | analizza una foto senza salvarla |
 | `npm run chiedi -- "quante volte ha mangiato Cippi?"` | chiede all'agente da terminale, con la traccia dei tool |
-| `npm run cerca -- "Sky nascosto"` | ricerca semantica sul diario |
+| `npm run cerca -- "Sky nascosto"` | ricerca semantica nelle descrizioni |
+| `npm run cerca -- --immagini "two budgies near the feeder"` | ricerca direttamente nelle foto (CLIP, in inglese) |
+| `npm run cerca -- --simili 12` | le foto più simili alla foto #12 |
+| `npm run embedding-immagini` | calcola l'impronta CLIP delle foto che non ce l'hanno |
 | `npm run valuta` | riclassifica le foto etichettate e misura l'accuratezza (`--foto NOME`, `--lato 1536`) |
-| `npm run valuta -- --salvate` | matrice di confusione delle previsioni salvate, senza chiamare il modello |
+| `npm run valuta -- --salvate` | previsioni salvate contro le tue etichette (azioni, acqua, cibo), senza chiamare il modello |
 | `npm run confronta-embedding -- nomic-embed-text bge-m3` | confronta modelli di embedding su `eval/ricerca.json` |
 | `npm run db:up` / `db:migra` / `db:psql` | avvia Postgres, applica le migrazioni, apre la console SQL |
 

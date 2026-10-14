@@ -35,9 +35,12 @@ export const EventoUccellino = z.object({
   confidenza: z.number().min(0).max(1),
 });
 
-export const LIVELLI = ["abbondante", "sufficiente", "scarso", "vuoto", "non_visibile"] as const;
-export const LIVELLI_ALLARME: readonly Livello[] = ["scarso", "vuoto"];
-export const PULIZIA = ["pulita", "un_po_sporca", "sporca", "non_visibile"] as const;
+// Pochi livelli, legati a una decisione: per acqua e cibo "rabbocco o no".
+// (La pulizia della gabbia è stata tolta: dalle foto non si riusciva a giudicarla. Le colonne nel DB restano.)
+// "da_rifornire" comprende sia "sta finendo" che "è finita": l'avviso deve arrivare PRIMA che manchi l'acqua.
+// Meno classi = etichette più coerenti e meno esempi necessari per un futuro classificatore.
+export const LIVELLI = ["ok", "da_rifornire", "non_visibile"] as const;
+export const LIVELLI_ALLARME: readonly Livello[] = ["da_rifornire"];
 
 // Lo stato della gabbia: riguarda la foto, non il singolo uccellino.
 // Gli enum costano 2-3 token l'uno: informazioni utili quasi gratis.
@@ -45,7 +48,6 @@ export const StatoGabbia = z.object({
   note: z.string().max(80), // cosa si vede di abbeveratoio, mangiatoia e fondo
   acqua: z.enum(LIVELLI),
   cibo: z.enum(LIVELLI),
-  pulizia: z.enum(PULIZIA),
 });
 
 export const AnalisiFoto = z

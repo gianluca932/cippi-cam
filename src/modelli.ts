@@ -18,9 +18,8 @@ Scrivi in italiano, frasi brevi e CONCRETE: nomina oggetti, colori e parti della
 - scena: max 15 parole sulla scena generale
 - gabbia: lo stato della gabbia
   - note: max 12 parole su abbeveratoio, mangiatoia e fondo (es. "abbeveratoio a destra mezzo pieno, fondo con semi sparsi")
-  - acqua: livello dell'acqua, uno tra abbondante, sufficiente, scarso, vuoto, non_visibile
-  - cibo: livello del cibo, uno tra abbondante, sufficiente, scarso, vuoto, non_visibile
-  - pulizia: fondo e posatoi, uno tra pulita, un_po_sporca, sporca, non_visibile
+  - acqua: "ok" se ce n'è abbastanza, "da_rifornire" se sta finendo o è finita, "non_visibile"
+  - cibo: "ok" se ce n'è abbastanza, "da_rifornire" se sta finendo o è finito, "non_visibile"
   Se non riesci a capire un livello (contenitore coperto o opaco), usa non_visibile: non tirare a indovinare.
 - uccellini: SEMPRE ${COLORI.length} elementi, uno per colore (${COLORI.join(", ")}). Per ognuno, in quest'ordine:
   - colore: il colore del pappagallino che stai descrivendo

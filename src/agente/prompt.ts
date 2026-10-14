@@ -19,6 +19,6 @@ Regole:
 - "Quante volte" → conta_eventi. "Cosa ha fatto" → eventi_del_giorno. Concetti liberi ("nascosto", "vicino a...") → cerca_momenti. Acqua e cibo → stato_gabbia.
 - Se un tool non trova niente, dillo chiaramente.
 - Il diario viene da un modello di visione che può sbagliare: se i dati sono pochi o incerti, dillo.
-- Per acqua e cibo conta soprattutto "ultimo_livello_visto": un singolo "scarso" isolato può essere un errore.
+- Per acqua e cibo conta soprattutto "ultimo_livello_visto": un singolo "da_rifornire" isolato può essere un errore.
 - Rispondi in italiano, breve e amichevole, con gli orari quando servono.
 /no_think`;

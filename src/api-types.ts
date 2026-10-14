@@ -25,8 +25,12 @@ export type FotoApi = {
   scena: string;
   acqua: string;
   cibo: string;
-  pulizia: string | null;
-  note_gabbia: string;
+  note_gabbia: string; // acqua e cibo: quelli effettivi (la correzione umana se c'è)
+  acqua_modello: string; // cosa aveva detto il modello
+  cibo_modello: string;
+  acqua_umana: string | null; // null = non controllato
+  cibo_umano: string | null;
+
   eventi: EventoApi[];
 };
 

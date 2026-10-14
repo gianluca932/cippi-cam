@@ -10,23 +10,33 @@ export { RispostaNonValida } from "./modelli.js";
 
 const sec = (s?: number) => (s === undefined ? "?" : `${s.toFixed(1)}s`);
 
-export async function analizza(jpgPath: string) {
+/** Le fasi di lavoro su una foto, per chi vuole mostrarle (es. npm run importa). */
+export type Fase = "conversione" | "visione" | "embedding" | "salvataggio" | "impronta";
+export type AvvisoFase = (fase: Fase, stato: "inizio" | "fine", dettaglio?: string) => void;
+
+export async function analizza(jpgPath: string, onFase?: AvvisoFase) {
   // 1. Gli occhi: il modello di visione guarda la foto. La risposta arriva già validata con Zod
   //    (se non rispetta lo schema, classifyImage lancia RispostaNonValida).
   const start = performance.now();
+  onFase?.("visione", "inizio");
   const { analisi, tempi } = await classifyImage(readFileSync(jpgPath).toString("base64"));
-  console.log(`⏱️ Visione: ${((performance.now() - start) / 1000).toFixed(1)}s`
-    + ` (foto ${sec(tempi.secondiLettura)}, risposta ${sec(tempi.secondiRisposta)}, ${tempi.tokenRisposta ?? "?"} token)`);
+  onFase?.("visione", "fine", `${tempi.tokenRisposta ?? "?"} token`);
+  if (!onFase) {
+    console.log(`⏱️ Visione: ${((performance.now() - start) / 1000).toFixed(1)}s`
+      + ` (foto ${sec(tempi.secondiLettura)}, risposta ${sec(tempi.secondiRisposta)}, ${tempi.tokenRisposta ?? "?"} token)`);
+  }
 
   // 2. Un embedding per uccellino, per la ricerca semantica.
+  onFase?.("embedding", "inizio");
   const embeddings = await embed(analisi.uccellini.map((u) => textForEmbedding(u, analisi.scena)), "documento");
+  onFase?.("embedding", "fine", `${embeddings.length} × ${embeddings[0]?.length ?? 0}`);
   return { analisi, embeddings };
 }
 
 export function stampa(analisi: AnalisiFoto) {
   console.log(`📷 ${analisi.scena}`);
-  const { acqua, cibo, pulizia, note } = analisi.gabbia;
-  console.log(`🏠 acqua: ${acqua} · cibo: ${cibo} · pulizia: ${pulizia} — ${note}`);
+  const { acqua, cibo, note } = analisi.gabbia;
+  console.log(`🏠 acqua: ${acqua} · cibo: ${cibo} — ${note}`);
   if (LIVELLI_ALLARME.includes(acqua)) console.warn(`🚨 Acqua ${acqua}: va controllata!`);
   if (LIVELLI_ALLARME.includes(cibo)) console.warn(`🚨 Cibo ${cibo}: va controllato!`);
 

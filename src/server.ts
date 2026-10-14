@@ -9,6 +9,7 @@ import type { ChatApi, EventoChat } from "./api-types.js";
 import { chiediAllAgente } from "./agente/index.js";
 import {
   correggiEvento,
+  correggiGabbia,
   elencoGiorni,
   elencoUccellini,
   eventiPerEmbedding,
@@ -20,7 +21,7 @@ import { configLlm } from "./llm.js";
 import { controllaEmbedding, embed, textForEmbedding } from "./modelli.js";
 import { avviaRegistrazione, fermaRegistrazione, statoRegistrazione } from "./registrazione.js";
 import { CARTELLA_SCATTI, nomeValido, ultimiScatti } from "./scatti.js";
-import { AZIONI, type Azione } from "./schema.js";
+import { AZIONI, LIVELLI, type Azione } from "./schema.js";
 
 const PORT = Number(process.env.PORT ?? 3001);
 const app = new Hono().basePath("/api");
@@ -118,6 +119,24 @@ async function aggiornaEvento(id: number, azione: Azione | null) {
 }
 
 const Correzione = z.object({ azione: z.enum(AZIONI) });
+
+// Corregge o conferma acqua e cibo di una foto. Solo i campi passati; null = annulla la correzione.
+const CorrezioneGabbia = z
+  .object({
+    acqua: z.enum(LIVELLI).nullable().optional(),
+    cibo: z.enum(LIVELLI).nullable().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: "Serve almeno uno tra acqua e cibo" });
+
+app.patch("/foto/:id/gabbia", async (c) => {
+  const id = Number(c.req.param("id"));
+  const body = CorrezioneGabbia.safeParse(await c.req.json().catch(() => null));
+  if (!Number.isInteger(id) || !body.success) {
+    return c.json({ errore: `Serve { acqua?, cibo?: ${LIVELLI.join(" | ")} | null }` }, 400);
+  }
+  if (!(await correggiGabbia(id, body.data))) return c.notFound();
+  return c.json({ ok: true });
+});
 
 // Corregge o conferma (stessa azione del modello) l'azione di un evento.
 app.patch("/eventi/:id", async (c) => {

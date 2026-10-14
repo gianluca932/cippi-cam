@@ -67,6 +67,9 @@ async function invia(method: string, path: string, body?: unknown) {
 }
 export const correggiAzione = (id: number, azione: string) => invia("PATCH", `/eventi/${id}`, { azione });
 export const annullaCorrezione = (id: number) => invia("DELETE", `/eventi/${id}/correzione`);
+// Gabbia: solo i campi passati; null = annulla la correzione di quel campo.
+export const correggiGabbia = (fotoId: number, valori: Partial<Record<"acqua" | "cibo", string | null>>) =>
+  invia("PATCH", `/foto/${fotoId}/gabbia`, valori);
 
 // Registrazione dalla pagina Live.
 async function post<T>(path: string, body?: unknown): Promise<T> {

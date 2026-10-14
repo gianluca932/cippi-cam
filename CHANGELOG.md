@@ -7,6 +7,42 @@ Le sezioni **Misurato** riportano i risultati di `npm run valuta` e `npm run con
 
 ---
 
+## [0.12.0] — 2026-10-14 · Ricerca per immagini, correzioni di acqua e cibo, webcam nuova
+
+### Aggiunto
+- **Impronte CLIP delle foto** ([src/immagini.ts](src/immagini.ts)): `Xenova/clip-vit-base-patch32` da Hugging Face con transformers.js, in Node sulla CPU, senza Ollama. 512 numeri a foto in ~30 ms, nella colonna `embedding_immagine` che esisteva dal primo schema.
+  - calcolate in automatico a ogni import; `npm run embedding-immagini` per le foto già presenti;
+  - migrazione 003: indice HNSW;
+  - `npm run cerca -- --immagini "…"` (ricerca testo → foto, in inglese) e `--simili <id>` (foto simili).
+- **Correzione di acqua e cibo in galleria**: riga "Gabbia" con due pillole; ✓ conferma, ↺ annulla. Migrazione 004: `acqua_umana`, `cibo_umano`, vista `foto_effettive`; `PATCH /api/foto/:id/gabbia`. Il valore del modello non si sovrascrive mai.
+- **`valuta` misura anche la gabbia**, sia sulle previsioni salvate (`--salvate`) sia riclassificando.
+- **`importa` con avanzamento visuale**: barra, stima del tempo, una riga per fase (conversione, visione, embedding, salvataggio, impronta) con spinner e tempi, riassunto per foto. Senza librerie ([src/terminale.ts](src/terminale.ts)); senza terminale, righe semplici.
+
+### Modificato
+- **Livelli della gabbia ridotti** a una decisione: acqua e cibo `ok` / `da_rifornire` / `non_visibile` (prima 5 livelli). "da_rifornire" comprende "sta finendo": l'avviso deve arrivare prima che manchi. Migrazione 005 converte i valori salvati.
+- **Pulizia della gabbia tolta** da schema, prompt, agente e interfaccia: dalle foto non si riusciva a giudicarla. Le colonne nel database restano.
+- **Webcam USB nuova**, vicina alla gabbia; foto e diario ripartiti da zero (backup del giorno prima in `data/archivio/`).
+
+### Corretto
+- `valuta` saltava in errore sulle foto etichettate ma archiviate: ora le salta con un avviso.
+
+### Misurato
+| | Risultato |
+|---|---|
+| **Azioni**, previsioni salvate, webcam nuova (101 etichette) | **82/101 = 81%** (ieri, webcam lontana: 57%) · mangia 14/14 · si pulisce 6/6 · riposa 34/43 · gioca 5/10 |
+| **Acqua** (25 etichette) | **20/25 = 80%** |
+| **Cibo** (29 etichette) | **21/29 = 72%**: 8 errori, tutti "da rifornire" non visti |
+| Esperimento: regola delle due mangiatoie nel prompt (14 foto) | cibo 6/14 → **11/14**, ma **azioni 17/21 → 12/21** → **scartata** |
+| CLIP | ~30 ms a foto · "a yellow budgie with ruffled feathers preening" trova per prima la foto in cui Cippi si pulisce |
+
+### Problemi noti
+- **Cibo**: per l'utente è "da rifornire" se anche una sola delle due mangiatoie è vuota; il modello guarda l'insieme. La regola nel prompt unico peggiora le azioni: va risolta con un prompt separato per la gabbia (ogni 15–30 minuti) o con un classificatore sui ritagli fissi delle mangiatoie.
+- **La webcam USB si scurisce dopo un po'** (anche in Photo Booth) e torna normale solo staccandola e riattaccandola; l'esposizione non è regolabile (CameraController senza effetto). Va bene per sessioni brevi.
+- Le etichette sono state date guardando le previsioni del modello: possibile effetto "ancoraggio" che gonfia un po' le accuratezze.
+- Dopo la modifica al tool `stato_gabbia` l'agente non è stato riprovato con `npm run chiedi`.
+
+---
+
 ## [0.11.0] — 2026-10-14 · Agente su LangChain/LangGraph e provider via env
 
 ### Aggiunto

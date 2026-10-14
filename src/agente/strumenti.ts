@@ -107,7 +107,7 @@ export const statoGabbiaTool = tool(
     if (!foto.length) return json({ giorno, nota: "Nessuna foto in questo giorno." });
 
     // Riassunto già calcolato: un modello piccolo sbaglia se deve dedurlo da una lista lunga.
-    const riassunto = (campo: "acqua" | "cibo" | "pulizia") => {
+    const riassunto = (campo: "acqua" | "cibo") => {
       const visibili = foto.filter((f) => f[campo] && f[campo] !== "non_visibile");
       const ultima = visibili.at(-1);
       const perLivello: Record<string, number> = {};
@@ -122,12 +122,11 @@ export const statoGabbiaTool = tool(
       foto_analizzate: foto.length,
       acqua: riassunto("acqua"),
       cibo: riassunto("cibo"),
-      pulizia: riassunto("pulizia"),
     });
   },
   {
     name: "stato_gabbia",
-    description: "Livello di acqua e cibo e pulizia della gabbia: l'ultimo visto nel giorno e quante foto per livello.",
+    description: "Livello di acqua e cibo nella gabbia: l'ultimo visto nel giorno e quante foto per livello.",
     schema: z.object({ giorno: Giorno }),
   },
 );

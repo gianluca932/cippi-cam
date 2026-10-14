@@ -6,6 +6,7 @@ import {
   type AnalisiFoto,
   type Azione,
   type EventoUccellino,
+  type Livello,
 } from "./schema.js";
 import { nomeDaColore, UCCELLINI } from "./uccellini.js";
 
@@ -49,8 +50,8 @@ export async function salvaAnalisi(
   try {
     await client.query("BEGIN");
     const { rows } = await client.query<{ id: number }>(
-      `INSERT INTO foto (percorso, ora, modello, scena, acqua, cibo, note_gabbia, pulizia)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      `INSERT INTO foto (percorso, ora, modello, scena, acqua, cibo, note_gabbia)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
       [
         percorso,
         ora,
@@ -59,7 +60,6 @@ export async function salvaAnalisi(
         analisi.gabbia.acqua,
         analisi.gabbia.cibo,
         analisi.gabbia.note,
-        analisi.gabbia.pulizia,
       ],
     );
     const fotoId = rows[0].id;
@@ -147,12 +147,12 @@ export async function eventiDelGiorno(giorno: string, uccellino?: string): Promi
   return rows;
 }
 
-export type GabbiaInFoto = { ora: Date; acqua: string; cibo: string; pulizia: string | null; note: string };
+export type GabbiaInFoto = { ora: Date; acqua: string; cibo: string; note: string };
 
 // Acqua e cibo in tutte le foto di un giorno, in ordine di tempo.
 export async function gabbiaDelGiorno(giorno: string): Promise<GabbiaInFoto[]> {
   const { rows } = await pool.query<GabbiaInFoto>(
-    `SELECT ora, acqua, cibo, pulizia, note_gabbia AS note FROM foto
+    `SELECT ora, acqua, cibo, note_gabbia AS note FROM foto_effettive
      WHERE (ora AT TIME ZONE $1)::date = $2::date
      ORDER BY ora`,
     [FUSO, giorno],
@@ -183,7 +183,8 @@ export async function elencoGiorni(): Promise<GiornoApi[]> {
 
 export async function fotoDelGiorno(giorno: string): Promise<FotoApi[]> {
   const { rows } = await pool.query<FotoApi>(
-    `SELECT f.id, f.ora, f.scena, f.acqua, f.cibo, f.pulizia, f.note_gabbia,
+    `SELECT f.id, f.ora, f.scena, f.acqua, f.cibo, f.note_gabbia,
+            f.acqua_modello, f.cibo_modello, f.acqua_umana, f.cibo_umano,
             json_agg(json_build_object(
               'id', e.id, 'nome', e.uccellino, 'colore', u.colore, 'azione', e.azione, 'confidenza', e.confidenza,
               'azione_modello', e.azione_modello, 'confidenza_modello', e.confidenza_modello,
@@ -191,11 +192,14 @@ export async function fotoDelGiorno(giorno: string): Promise<FotoApi[]> {
               'descrizione', e.descrizione, 'posizione', e.posizione, 'postura', e.postura, 'con_cosa', e.con_cosa,
               'oggetti_vicini', e.oggetti_vicini
             ) ORDER BY e.uccellino) AS eventi
-     FROM foto f
+     FROM foto_effettive f
      JOIN eventi_effettivi e ON e.foto_id = f.id
      JOIN uccellini u ON u.nome = e.uccellino
      WHERE (f.ora AT TIME ZONE $1)::date = $2::date
-     GROUP BY f.id ORDER BY f.ora DESC`,
+     -- Una vista non ha chiave primaria: Postgres vuole tutte le colonne non aggregate nel GROUP BY.
+     GROUP BY f.id, f.ora, f.scena, f.acqua, f.cibo, f.note_gabbia,
+              f.acqua_modello, f.cibo_modello, f.acqua_umana, f.cibo_umano
+     ORDER BY f.ora DESC`,
     [FUSO, giorno],
   );
   return rows;
@@ -246,6 +250,52 @@ export async function salvaEmbedding(id: number, embedding: number[]) {
   await pool.query("UPDATE eventi SET embedding_testo = $2 WHERE id = $1", [id, toVector(embedding)]);
 }
 
+export type CorrezioneGabbia = {
+  acqua?: Livello | null; // null = annulla la correzione, torna valido il modello
+  cibo?: Livello | null;
+};
+
+// Correzione (o conferma) umana dello stato della gabbia di una foto. Si aggiornano solo i campi passati.
+export async function correggiGabbia(fotoId: number, valori: CorrezioneGabbia): Promise<boolean> {
+  const campi = { acqua: "acqua_umana", cibo: "cibo_umano" } as const;
+  const set: string[] = [];
+  const parametri: unknown[] = [fotoId];
+  for (const [chiave, colonna] of Object.entries(campi)) {
+    const valore = valori[chiave as keyof CorrezioneGabbia];
+    if (valore === undefined) continue;
+    parametri.push(valore);
+    set.push(`${colonna} = $${parametri.length}`); // i nomi delle colonne vengono dalla nostra lista, mai dall'utente
+  }
+  if (!set.length) return false;
+  const { rowCount } = await pool.query(`UPDATE foto SET ${set.join(", ")} WHERE id = $1`, parametri);
+  // In un UPDATE le colonne citate nel SET hanno ancora il valore VECCHIO: la data di controllo
+  // si calcola quindi dopo, sui valori appena salvati.
+  await pool.query(
+    `UPDATE foto SET gabbia_controllata_il =
+       CASE WHEN COALESCE(acqua_umana, cibo_umano) IS NULL THEN NULL ELSE now() END
+     WHERE id = $1`,
+    [fotoId],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+export type EtichettaGabbia = {
+  percorso: string;
+  acqua_modello: string; acqua_umana: string | null;
+  cibo_modello: string; cibo_umano: string | null;
+};
+
+// Le foto in cui hai controllato almeno un campo della gabbia: le etichette per valutare il modello.
+export async function etichetteGabbia(): Promise<EtichettaGabbia[]> {
+  const { rows } = await pool.query<EtichettaGabbia>(
+    `SELECT percorso, acqua_modello, acqua_umana, cibo_modello, cibo_umano
+     FROM foto_effettive
+     WHERE COALESCE(acqua_umana, cibo_umano) IS NOT NULL
+     ORDER BY ora`,
+  );
+  return rows;
+}
+
 export type Etichetta = {
   percorso: string;
   uccellino: string;
@@ -280,6 +330,50 @@ export async function fotoAnalizzate(percorsi: string[]): Promise<FotoAnalizzata
     [percorsi],
   );
   return rows;
+}
+
+// --- Impronte delle immagini (CLIP) ---
+
+export async function salvaEmbeddingImmagine(fotoId: number, vettore: number[]) {
+  await pool.query("UPDATE foto SET embedding_immagine = $2 WHERE id = $1", [fotoId, toVector(vettore)]);
+}
+
+/** Le foto che non hanno ancora l'impronta (per riempirle dopo, vedi embedding-immagini.ts). */
+export async function fotoSenzaEmbeddingImmagine(): Promise<{ id: number; percorso: string }[]> {
+  const { rows } = await pool.query<{ id: number; percorso: string }>(
+    "SELECT id, percorso FROM foto WHERE embedding_immagine IS NULL ORDER BY ora",
+  );
+  return rows;
+}
+
+export type FotoTrovata = { foto_id: number; ora: Date; percorso: string; scena: string; similarita: number };
+
+/** Le foto più vicine a un vettore (di una frase o di un'altra foto), con filtro opzionale sul giorno. */
+export async function cercaFotoSimili(
+  vettore: number[],
+  limite = 5,
+  filtri: { giorno?: string; escludiFotoId?: number } = {},
+): Promise<FotoTrovata[]> {
+  const { rows } = await pool.query<FotoTrovata>(
+    `SELECT id AS foto_id, ora, percorso, scena, 1 - (embedding_immagine <=> $1) AS similarita
+     FROM foto
+     WHERE embedding_immagine IS NOT NULL
+       AND ($3::date IS NULL OR (ora AT TIME ZONE $4)::date = $3::date)
+       AND ($5::int IS NULL OR id <> $5)
+     ORDER BY embedding_immagine <=> $1
+     LIMIT $2`,
+    [toVector(vettore), limite, filtri.giorno ?? null, FUSO, filtri.escludiFotoId ?? null],
+  );
+  return rows;
+}
+
+/** L'impronta già salvata di una foto (per "foto simili a questa"). */
+export async function embeddingImmagineDi(fotoId: number): Promise<number[] | null> {
+  const { rows } = await pool.query<{ v: string | null }>(
+    "SELECT embedding_immagine::text AS v FROM foto WHERE id = $1",
+    [fotoId],
+  );
+  return rows[0]?.v ? (JSON.parse(rows[0].v) as number[]) : null;
 }
 
 // Quante dimensioni ha la colonna embedding_testo (per pgvector il "typmod" è proprio il numero di dimensioni).

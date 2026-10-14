@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join, parse } from "node:path";
-import { chiudi, etichetteUmane, type Etichetta } from "./db.js";
+import { chiudi, etichetteGabbia, etichetteUmane, type Etichetta, type EtichettaGabbia } from "./db.js";
 import { VISION_MODEL } from "./modelli.js";
 import { analizza, RispostaNonValida } from "./pipeline.js";
 import { nomeDaColore } from "./uccellini.js";
@@ -22,12 +22,21 @@ const lato = args.includes("--lato") ? args[args.indexOf("--lato") + 1] : "1024"
 // --foto NOME (anche più volte): valuta solo queste foto. Accetta anche il nome con estensione.
 const soloFoto = args.flatMap((a, i) => (a === "--foto" && args[i + 1] ? [parse(args[i + 1]).name] : []));
 
+// Campi della gabbia valutati (definiti qui, prima del programma principale che li usa).
+const CAMPI = ["acqua", "cibo"] as const;
+type Campo = (typeof CAMPI)[number];
+const umano = (e: EtichettaGabbia, c: Campo) => ({ acqua: e.acqua_umana, cibo: e.cibo_umano })[c];
+const delModello = (e: EtichettaGabbia, c: Campo) => ({ acqua: e.acqua_modello, cibo: e.cibo_modello })[c];
+
 const pct = (n: number, d: number) => `${d ? Math.round((n / d) * 100) : 0}%`;
 
 try {
   const etichette = await etichetteUmane();
-  if (args.includes("--salvate")) valutaSalvate(etichette);
-  else await valutaModello(etichette);
+  const gabbia = await etichetteGabbia();
+  if (args.includes("--salvate")) {
+    valutaSalvate(etichette);
+    valutaGabbiaSalvata(gabbia);
+  } else await valutaModello(etichette, gabbia);
 } finally {
   await chiudi();
 }
@@ -71,15 +80,44 @@ function valutaSalvate(etichette: Etichetta[]) {
   console.log(`\nAccuratezza: ${giusti}/${etichette.length} (${pct(giusti, etichette.length)})`);
 }
 
+// --- Gabbia (--salvate): acqua e cibo salvati dal modello contro le tue correzioni ---
+
+function valutaGabbiaSalvata(gabbia: EtichettaGabbia[]) {
+  console.log(`\n── Gabbia: ${gabbia.length} foto controllate`);
+  if (!gabbia.length) {
+    console.log("Nessuna etichetta sulla gabbia: conferma o correggi acqua e cibo dalla galleria.");
+    return;
+  }
+  for (const campo of CAMPI) {
+    const casi = gabbia.filter((e) => umano(e, campo) !== null);
+    if (!casi.length) continue;
+    const giusti = casi.filter((e) => delModello(e, campo) === umano(e, campo)).length;
+    // Gli errori raggruppati: "il modello diceva X, era Y" (×N)
+    const errori = new Map<string, number>();
+    for (const e of casi) {
+      if (delModello(e, campo) === umano(e, campo)) continue;
+      const chiave = `diceva ${delModello(e, campo) ?? "?"}, era ${umano(e, campo)}`;
+      errori.set(chiave, (errori.get(chiave) ?? 0) + 1);
+    }
+    const dettaglio = [...errori].map(([k, n]) => `${k} ×${n}`).join(" · ");
+    console.log(`  ${campo.padEnd(8)} ${giusti}/${casi.length} (${pct(giusti, casi.length)})${dettaglio ? `   ${dettaglio}` : ""}`);
+  }
+}
+
 // --- Modalità normale: riclassifica le foto etichettate con il modello e il prompt attuali ---
-async function valutaModello(etichette: Etichetta[]) {
-  // Unisce le etichette del file con quelle della galleria (la galleria vince sui doppioni).
-  const perFoto = new Map<string, Record<string, string>>();
+async function valutaModello(etichette: Etichetta[], etichetteGabbia: EtichettaGabbia[]) {
+  // Per ogni foto: le azioni attese (dal file e dalla galleria, la galleria vince) e lo stato della gabbia atteso.
+  type Attese = { azioni: Record<string, string>; gabbia: Partial<Record<Campo, string>> };
+  const perFoto = new Map<string, Attese>();
+  const attese = (nome: string) => perFoto.get(nome) ?? perFoto.set(nome, { azioni: {}, gabbia: {} }).get(nome)!;
   const daFile: Caso[] = JSON.parse(readFileSync(new URL("../eval/classificazione.json", import.meta.url), "utf8"));
-  for (const c of daFile) perFoto.set(c.foto, { ...c.azioni });
-  for (const e of etichette) {
-    const nome = parse(e.percorso).name;
-    perFoto.set(nome, { ...perFoto.get(nome), [e.uccellino]: e.azione_umana });
+  for (const c of daFile) Object.assign(attese(c.foto).azioni, c.azioni);
+  for (const e of etichette) attese(parse(e.percorso).name).azioni[e.uccellino] = e.azione_umana;
+  for (const e of etichetteGabbia) {
+    for (const campo of CAMPI) {
+      const valore = umano(e, campo);
+      if (valore !== null) attese(parse(e.percorso).name).gabbia[campo] = valore;
+    }
   }
 
   // Converte l'originale alla risoluzione richiesta (in cache in data/eval/).
@@ -89,7 +127,7 @@ async function valutaModello(etichette: Etichetta[]) {
   const immagine = (nome: string) => {
     const jpg = join(cartella, `${nome}-${lato}.jpg`);
     const originale = originali.get(nome);
-    if (!originale) throw new Error(`Foto ${nome} non trovata in photos/`);
+    if (!originale) return null; // foto archiviata o cancellata: si salta
     if (!existsSync(jpg)) execFileSync("sips", ["-s", "format", "jpeg", "-Z", lato, originale, "--out", jpg], { stdio: "ignore" });
     return jpg;
   };
@@ -100,13 +138,24 @@ async function valutaModello(etichette: Etichetta[]) {
     if (mancanti.length) console.log(`⚠️ Senza etichette, saltate: ${mancanti.join(", ")}`);
   }
 
-  console.log(`Modello: ${VISION_MODEL} · lato: ${lato}px · ${perFoto.size} foto (${daFile.length} dal file, ${etichette.length} etichette dalla galleria)\n`);
+  console.log(
+    `Modello: ${VISION_MODEL} · lato: ${lato}px · ${perFoto.size} foto ` +
+      `(${etichette.length} etichette sulle azioni, ${etichetteGabbia.length} foto con la gabbia controllata)\n`,
+  );
   let giusti = 0, totale = 0;
+  const gabbiaGiusti: Record<Campo, number> = { acqua: 0, cibo: 0 };
+  const gabbiaTotale: Record<Campo, number> = { acqua: 0, cibo: 0 };
+  const saltate: string[] = [];
 
-  for (const [foto, azioni] of perFoto) {
+  for (const [foto, { azioni, gabbia }] of perFoto) {
+    const jpg = immagine(foto);
+    if (!jpg) {
+      saltate.push(foto);
+      continue;
+    }
     console.log(`── ${foto}`);
     try {
-      const { analisi } = await analizza(immagine(foto));
+      const { analisi } = await analizza(jpg);
       for (const u of analisi.uccellini) {
         const nome = nomeDaColore(u.colore);
         const atteso = azioni[nome];
@@ -116,12 +165,25 @@ async function valutaModello(etichette: Etichetta[]) {
         if (ok) giusti++;
         console.log(`  ${ok ? "✅" : "❌"} ${nome}: ${u.azione} (${u.confidenza})${ok ? "" : `, atteso ${atteso}`} — ${u.postura}`);
       }
+      for (const campo of CAMPI) {
+        const atteso = gabbia[campo];
+        if (!atteso) continue;
+        const detto = analisi.gabbia[campo];
+        gabbiaTotale[campo]++;
+        if (detto === atteso) gabbiaGiusti[campo]++;
+        console.log(`  ${detto === atteso ? "✅" : "❌"} ${campo}: ${detto}${detto === atteso ? "" : `, atteso ${atteso}`}`);
+      }
     } catch (err) {
       if (!(err instanceof RispostaNonValida)) throw err;
       console.log("  ❌ risposta non valida per lo schema");
       totale += Object.keys(azioni).length;
+      for (const campo of CAMPI) if (gabbia[campo]) gabbiaTotale[campo]++;
     }
   }
 
-  console.log(`\nAccuratezza: ${giusti}/${totale} (${pct(giusti, totale)})`);
+  if (saltate.length) console.log(`\n⚠️ ${saltate.length} foto etichettate non sono più in photos/ (archiviate?): saltate.`);
+  console.log(`\nAccuratezza azioni: ${giusti}/${totale} (${pct(giusti, totale)})`);
+  for (const campo of CAMPI) {
+    if (gabbiaTotale[campo]) console.log(`Accuratezza ${campo}: ${gabbiaGiusti[campo]}/${gabbiaTotale[campo]} (${pct(gabbiaGiusti[campo], gabbiaTotale[campo])})`);
+  }
 }
