@@ -48,7 +48,7 @@ function RigaGabbia({ f, onCambia }: { f: FotoApi; onCambia: (valori: ValoriGabb
   const stato = controllati.length === 0 ? "da-controllare" : "controllato";
 
   return (
-    <div className="riga-gabbia" title={f.note_gabbia}>
+    <div className="riga-gabbia" title={f.note_gabbia ?? undefined}>
       <span className="riga-nome">Gabbia</span>
       <div className="gabbia-pillole">
         {CAMPI_GABBIA.map(({ chiave, icona, nome, valori }) => {
@@ -150,9 +150,11 @@ function FotoGrande({ foto, onChiudi }: { foto: FotoApi | null; onChiudi: () => 
                   {e.con_cosa && e.con_cosa !== "niente" && ` · ${e.con_cosa}`}
                 </span>
               ))}
-              <span className="muted">
-                💧 {foto.acqua.replace("_", " ")} · 🌾 {foto.cibo.replace("_", " ")}
-              </span>
+              {foto.acqua && foto.cibo && (
+                <span className="muted">
+                  💧 {foto.acqua.replace("_", " ")} · 🌾 {foto.cibo.replace("_", " ")}
+                </span>
+              )}
             </div>
             <dl className="foto-grande-dettagli">
               {foto.eventi.map((e) => (
@@ -299,17 +301,20 @@ export function Gallery({ title, foto }: { title: string; foto: FotoApi[] }) {
             <button type="button" className="foto-card" onClick={() => setAperta(f.id)} aria-label="Apri la foto in grande">
               <img src={`/api/foto/${f.id}/immagine`} alt={f.scena} loading="lazy" />
               <span className="chip-foto ora">{formatOra(f.ora)}</span>
-              <span className="livelli-foto">
-                <Livello icona="💧" nome="acqua" valore={f.acqua} />
-                <Livello icona="🌾" nome="cibo" valore={f.cibo} />
-              </span>
+              {f.acqua && f.cibo && (
+                <span className="livelli-foto">
+                  <Livello icona="💧" nome="acqua" valore={f.acqua} />
+                  <Livello icona="🌾" nome="cibo" valore={f.cibo} />
+                </span>
+              )}
               <EtichetteFoto eventi={f.eventi} />
             </button>
             <div className="card-body">
               {f.eventi.map((e) => (
                 <RigaEvento key={e.id} e={e} onCambia={(azione) => cambia(e, azione)} />
               ))}
-              <RigaGabbia f={f} onCambia={(valori) => cambiaGabbia(f, valori)} />
+              {/* La gabbia si corregge solo sulle foto in cui il modello l'ha controllata */}
+              {f.acqua_modello !== null && <RigaGabbia f={f} onCambia={(valori) => cambiaGabbia(f, valori)} />}
               <p className="scena">{f.scena}</p>
             </div>
           </article>

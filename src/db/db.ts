@@ -4,6 +4,7 @@ import type { FotoApi, GiornoApi, UccellinoApi } from "../comune/api-types.js";
 import {
   MIN_CONFIDENCE,
   type AnalisiFoto,
+  type AnalisiGabbia,
   type Azione,
   type EventoUccellino,
   type Livello,
@@ -30,6 +31,29 @@ export async function sincronizzaUccellini() {
   }
 }
 
+// --- Controlli della gabbia (acqua e cibo) ---
+
+/** Salva il controllo della gabbia su una foto: da quel momento quella foto è "il controllo". */
+export async function salvaControlloGabbia(fotoId: number, gabbia: AnalisiGabbia) {
+  await pool.query("UPDATE foto SET acqua = $2, cibo = $3, note_gabbia = $4 WHERE id = $1", [
+    fotoId,
+    gabbia.acqua,
+    gabbia.cibo,
+    gabbia.note,
+  ]);
+}
+
+/** L'ultimo controllo della gabbia fatto prima (o all'ora) di una certa ora di scatto. */
+export async function ultimoControlloGabbia(primaDi: Date): Promise<{ ora: Date; acqua: string; cibo: string } | null> {
+  const { rows } = await pool.query<{ ora: Date; acqua: string; cibo: string }>(
+    `SELECT ora, acqua, cibo FROM foto_effettive
+     WHERE acqua IS NOT NULL AND ora <= $1
+     ORDER BY ora DESC LIMIT 1`,
+    [primaDi],
+  );
+  return rows[0] ?? null;
+}
+
 export async function fotoEsiste(percorso: string): Promise<boolean> {
   const { rowCount } = await pool.query(
     "SELECT 1 FROM foto WHERE percorso = $1",
@@ -50,17 +74,9 @@ export async function salvaAnalisi(
   try {
     await client.query("BEGIN");
     const { rows } = await client.query<{ id: number }>(
-      `INSERT INTO foto (percorso, ora, modello, scena, acqua, cibo, note_gabbia)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-      [
-        percorso,
-        ora,
-        modello,
-        analisi.scena,
-        analisi.gabbia.acqua,
-        analisi.gabbia.cibo,
-        analisi.gabbia.note,
-      ],
+      // acqua e cibo restano NULL: li scrive salvaControlloGabbia, solo sulle foto in cui si controlla la gabbia.
+      `INSERT INTO foto (percorso, ora, modello, scena) VALUES ($1, $2, $3, $4) RETURNING id`,
+      [percorso, ora, modello, analisi.scena],
     );
     const fotoId = rows[0].id;
 
@@ -153,7 +169,7 @@ export type GabbiaInFoto = { ora: Date; acqua: string; cibo: string; note: strin
 export async function gabbiaDelGiorno(giorno: string): Promise<GabbiaInFoto[]> {
   const { rows } = await pool.query<GabbiaInFoto>(
     `SELECT ora, acqua, cibo, note_gabbia AS note FROM foto_effettive
-     WHERE (ora AT TIME ZONE $1)::date = $2::date
+     WHERE (ora AT TIME ZONE $1)::date = $2::date AND acqua IS NOT NULL -- solo i controlli della gabbia
      ORDER BY ora`,
     [FUSO, giorno],
   );

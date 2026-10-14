@@ -85,7 +85,7 @@ Le cartelle di `src/`: `comandi/` (un file per ogni `npm run …`), `server/` (A
 - **Ordine dei campi = ordine di generazione.** I campi descrittivi (posizione, postura, con_cosa, descrizione) restano **prima** di `azione` e `confidenza`.
 - **Ogni campo di testo ha un `.max()`**: finisce nella grammatica e limita i token (e quindi il tempo). Un campo nuovo senza limite non passa.
 - **Niente esempi che descrivono un'azione** nel prompt (tipo "becco tra le piume"): il modello li copia. Gli esempi devono essere neutri o di formato.
-- **Il prompt della visione è uno solo e tutto è collegato**: una regola sul cibo ha peggiorato le azioni (17/21 → 12/21). Una modifica a un campo va misurata anche sugli altri campi; se un campo ha bisogno di regole sue, meglio un prompt separato.
+- **In un prompt tutto è collegato**: una regola sul cibo ha peggiorato le azioni (17/21 → 12/21). Per questo i prompt sono due: azioni e gabbia (che gira a tempo, non a ogni foto). Una modifica a un campo va misurata anche sugli altri campi del suo prompt; se un campo ha bisogno di regole sue, meglio un prompt separato.
 - **La `confidenza` del modello non è una probabilità.** Non costruirci sopra logiche importanti senza validarla con `valuta --salvate`.
 - **Enum invece di testo libero** quando i valori sono pochi: costano 2-3 token e sono filtrabili in SQL.
 - **Agente**: un'aggiunta al system prompt va provata su almeno 5 domande (`npm run chiedi`) per verificare che usi ancora i tool. Formattazione e pulizia del testo si fanno nell'interfaccia, non chiedendole al modello.

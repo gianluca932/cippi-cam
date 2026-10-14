@@ -1,7 +1,8 @@
 import { readFileSync, statSync } from "node:fs";
 import exifr from "exifr";
-import { classifyImage, embed, textForEmbedding } from "../modelli/modelli.js";
-import { LIVELLI_ALLARME, MIN_CONFIDENCE, type AnalisiFoto } from "../modelli/schema.js";
+import { classifyGabbia, classifyImage, embed, textForEmbedding } from "../modelli/modelli.js";
+import { LIVELLI_ALLARME, MIN_CONFIDENCE, type AnalisiFoto, type AnalisiGabbia } from "../modelli/schema.js";
+import { c } from "../comune/terminale.js";
 import { nomeDaColore } from "../comune/uccellini.js";
 
 // Il cuore condiviso da classify e importa: foto → visione → Zod → embedding.
@@ -11,8 +12,36 @@ export { RispostaNonValida } from "../modelli/modelli.js";
 const sec = (s?: number) => (s === undefined ? "?" : `${s.toFixed(1)}s`);
 
 /** Le fasi di lavoro su una foto, per chi vuole mostrarle (es. npm run importa). */
-export type Fase = "conversione" | "visione" | "embedding" | "salvataggio" | "impronta";
+export type Fase = "conversione" | "visione" | "embedding" | "salvataggio" | "impronta" | "gabbia";
 export type AvvisoFase = (fase: Fase, stato: "inizio" | "fine", dettaglio?: string) => void;
+
+// --- Grafica nel terminale (importa e classify) ---
+
+export const NOMI_FASI: Record<Fase, string> = {
+  conversione: "conversione",
+  visione: "modello di visione",
+  embedding: "embedding del testo",
+  salvataggio: "salvataggio nel diario",
+  impronta: "impronta CLIP",
+  gabbia: "controllo della gabbia",
+};
+
+export const percentuale = (x: number) => `${Math.round(x * 100)}%`;
+const livello = (l: string) => l.replaceAll("_", " ");
+
+/** Il riassunto di una foto analizzata, in una riga. */
+export function riassunto(analisi: AnalisiFoto, gabbia: AnalisiGabbia | null): string {
+  const uccellini = analisi.uccellini
+    .map((u) => {
+      const testo = `${nomeDaColore(u.colore)}: ${u.azione.replace("_", " ")} ${percentuale(u.confidenza)}`;
+      return u.confidenza < MIN_CONFIDENCE ? c.giallo(`${testo} (incerto)`) : testo;
+    })
+    .join(" · ");
+  // La gabbia non si controlla a ogni foto (vedi serveControlloGabbia in importazione.ts).
+  if (!gabbia) return `   🐦 ${uccellini}   ${c.grigio("gabbia non controllata")}`;
+  const allarme = (l: string) => (LIVELLI_ALLARME.includes(l as never) ? c.rosso(livello(l)) : livello(l));
+  return `   🐦 ${uccellini}   ${c.grigio("💧")} ${allarme(gabbia.acqua)} ${c.grigio("· 🌾")} ${allarme(gabbia.cibo)}`;
+}
 
 export async function analizza(jpgPath: string, onFase?: AvvisoFase) {
   // 1. Gli occhi: il modello di visione guarda la foto. La risposta arriva già validata con Zod
@@ -33,12 +62,23 @@ export async function analizza(jpgPath: string, onFase?: AvvisoFase) {
   return { analisi, embeddings };
 }
 
-export function stampa(analisi: AnalisiFoto) {
-  console.log(`📷 ${analisi.scena}`);
-  const { acqua, cibo, note } = analisi.gabbia;
+/** Il controllo della gabbia (acqua e cibo): un'analisi a parte, con il suo prompt. */
+export async function analizzaGabbia(jpgPath: string, onFase?: AvvisoFase): Promise<AnalisiGabbia> {
+  onFase?.("gabbia", "inizio");
+  const { analisi, tempi } = await classifyGabbia(readFileSync(jpgPath).toString("base64"));
+  onFase?.("gabbia", "fine", `${tempi.tokenRisposta ?? "?"} token`);
+  return analisi;
+}
+
+export function stampaGabbia(gabbia: AnalisiGabbia) {
+  const { acqua, cibo, note } = gabbia;
   console.log(`🏠 acqua: ${acqua} · cibo: ${cibo} — ${note}`);
   if (LIVELLI_ALLARME.includes(acqua)) console.warn(`🚨 Acqua ${acqua}: va controllata!`);
   if (LIVELLI_ALLARME.includes(cibo)) console.warn(`🚨 Cibo ${cibo}: va controllato!`);
+}
+
+export function stampa(analisi: AnalisiFoto) {
+  console.log(`📷 ${analisi.scena}`);
 
   for (const u of analisi.uccellini) {
     // Secondo guardrail: la soglia di confidenza. L'evento si salva comunque,

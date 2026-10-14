@@ -23,11 +23,12 @@ export type FotoApi = {
   id: number;
   ora: string; // ISO
   scena: string;
-  acqua: string;
-  cibo: string;
-  note_gabbia: string; // acqua e cibo: quelli effettivi (la correzione umana se c'è)
-  acqua_modello: string; // cosa aveva detto il modello
-  cibo_modello: string;
+  // Gabbia: null sulle foto in cui non è stata controllata (si controlla ogni ~20 minuti, non a ogni foto).
+  acqua: string | null;
+  cibo: string | null;
+  note_gabbia: string | null; // acqua e cibo: quelli effettivi (la correzione umana se c'è)
+  acqua_modello: string | null; // cosa aveva detto il modello
+  cibo_modello: string | null;
   acqua_umana: string | null; // null = non controllato
   cibo_umano: string | null;
 

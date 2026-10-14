@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join, parse } from "node:path";
 import { chiudi, etichetteGabbia, etichetteUmane, type Etichetta, type EtichettaGabbia } from "../db/db.js";
 import { VISION_MODEL } from "../modelli/modelli.js";
-import { analizza, RispostaNonValida } from "../foto/pipeline.js";
+import { analizza, analizzaGabbia, RispostaNonValida } from "../foto/pipeline.js";
 import { nomeDaColore } from "../comune/uccellini.js";
 
 // Misura l'accuratezza del classificatore sulle foto etichettate a mano.
@@ -154,6 +154,7 @@ async function valutaModello(etichette: Etichetta[], etichetteGabbia: EtichettaG
       continue;
     }
     console.log(`── ${foto}`);
+    // Due prompt separati: azioni e gabbia. Un errore su uno non conta come errore sull'altro.
     try {
       const { analisi } = await analizza(jpg);
       for (const u of analisi.uccellini) {
@@ -165,18 +166,25 @@ async function valutaModello(etichette: Etichetta[], etichetteGabbia: EtichettaG
         if (ok) giusti++;
         console.log(`  ${ok ? "✅" : "❌"} ${nome}: ${u.azione} (${u.confidenza})${ok ? "" : `, atteso ${atteso}`} — ${u.postura}`);
       }
+    } catch (err) {
+      if (!(err instanceof RispostaNonValida)) throw err;
+      console.log("  ❌ azioni: risposta non valida per lo schema");
+      totale += Object.keys(azioni).length;
+    }
+    if (!CAMPI.some((campo) => gabbia[campo])) continue; // gabbia non etichettata: niente secondo prompt
+    try {
+      const detta = await analizzaGabbia(jpg);
       for (const campo of CAMPI) {
         const atteso = gabbia[campo];
         if (!atteso) continue;
-        const detto = analisi.gabbia[campo];
+        const detto = detta[campo];
         gabbiaTotale[campo]++;
         if (detto === atteso) gabbiaGiusti[campo]++;
         console.log(`  ${detto === atteso ? "✅" : "❌"} ${campo}: ${detto}${detto === atteso ? "" : `, atteso ${atteso}`}`);
       }
     } catch (err) {
       if (!(err instanceof RispostaNonValida)) throw err;
-      console.log("  ❌ risposta non valida per lo schema");
-      totale += Object.keys(azioni).length;
+      console.log("  ❌ gabbia: risposta non valida per lo schema");
       for (const campo of CAMPI) if (gabbia[campo]) gabbiaTotale[campo]++;
     }
   }

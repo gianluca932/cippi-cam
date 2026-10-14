@@ -1,6 +1,6 @@
 {
   "name": "cippi-cam",
-  "version": "0.12.1",
+  "version": "0.13.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,7 +16,9 @@
     "chiedi": "tsx src/comandi/chiedi.ts",
     "db:migra": "for f in db/migrazioni/*.sql; do echo \"→ $f\"; docker compose exec -T db psql -q -v ON_ERROR_STOP=1 -U cippi cippi < \"$f\" || exit 1; done",
     "dev": "node scripts/dev.mjs",
-    "embedding-immagini": "tsx src/comandi/embedding-immagini.ts"
+    "embedding-immagini": "tsx src/comandi/embedding-immagini.ts",
+    "clip-zero-shot": "tsx src/comandi/clip-zero-shot.ts",
+    "classificatore": "tsx src/comandi/classificatore.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.5",

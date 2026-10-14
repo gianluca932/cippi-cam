@@ -7,6 +7,46 @@ Le sezioni **Misurato** riportano i risultati di `npm run valuta` e `npm run con
 
 ---
 
+## [0.13.0] — 2026-10-14 · Prompt separato per la gabbia, esperimenti CLIP e classificatori
+
+### Aggiunto
+- **Un prompt solo per la gabbia** (`classifyGabbia` in [src/modelli/modelli.ts](src/modelli/modelli.ts), schema `AnalisiGabbia`). Una regola sul cibo nel prompt unico aveva peggiorato le azioni (17/21 → 12/21): le regole della gabbia ora stanno in un prompt a parte, e quello delle azioni non parla più di gabbia.
+  - cibo: "da_rifornire" se **anche una sola** delle due mangiatoie è vuota o quasi;
+  - acqua: "da_rifornire" solo se nella bottiglia ce n'è **meno di 1/5** o è finita.
+- **Controllo della gabbia a tempo** ([src/foto/importazione.ts](src/foto/importazione.ts)): i livelli non cambiano in un minuto, quindi il secondo prompt (~16 s) gira ogni `GABBIA_OGNI_MIN` minuti (20) e, se l'ultimo controllo diceva "da_rifornire", di nuovo dopo `GABBIA_RICONTROLLO_MIN` (5): un avviso futuro partirà solo su un problema confermato. Conta l'ora dello scatto, quindi funziona anche importando foto vecchie. Vale per `importa` e per la pagina Live; `classify` controlla sempre.
+- Migrazione 006: `acqua` e `cibo` possono essere `NULL` (foto senza controllo), indice parziale sui controlli.
+- **Esperimenti** (solo lettura, sulle impronte CLIP già salvate):
+  - `npm run clip-zero-shot` (`-- --gabbia`): classificare con frasi in inglese, senza addestramento;
+  - `npm run classificatore` (`-- --blocco N`): k-NN e regressione logistica scritti a mano, addestrati sulle etichette della galleria, con leave-one-out e leave-one-block-out.
+
+### Modificato
+- `classify` ha la stessa grafica di `importa` (una riga per fase con spinner, riassunto, dettagli); riassunto e nomi delle fasi in [src/foto/pipeline.ts](src/foto/pipeline.ts), condivisi.
+- `importa` mostra "gabbia non controllata" sulle foto saltate dal timer.
+- `valuta` usa i due prompt separatamente: un errore su uno non conta sull'altro.
+- Galleria: pillole e riga "Gabbia" solo sulle foto controllate.
+- Agente: `stato_gabbia` parla di controlli e dice l'ora dell'ultimo.
+
+### Misurato
+`npm run valuta` (riclassificando, webcam nuova), ricontato con le etichette corrette dopo la misura:
+
+| | prima (previsioni salvate, prompt unico) | dopo (riclassificando, due prompt) |
+|---|---|---|
+| azioni | 82/101 (81%) | 66/101 (65%) |
+| acqua | 22/27 (81%) | 15/27 (56%) |
+| cibo | 23/31 (74%) | **28/31 (90%)** |
+
+⚠️ Il "prima" non è una misura alla pari: sono previsioni salvate, prodotte da versioni diverse del prompt, ed etichettate partendo da quelle (le conferme tendono a dare ragione al modello). Manca un `valuta` del prompt unico sulle stesse foto per sapere quanto del calo delle azioni è reale.
+
+Esperimenti:
+- CLIP zero-shot: azioni 28% (almeno uno dei due faceva quell'azione); acqua 73% contro 69% rispondendo sempre la classe più frequente; cibo 35% contro 68%. CLIP sulla foto intera non vede gesti né livelli.
+- Classificatori su CLIP: cibo 84% con leave-one-out, ma 52–55% togliendo le foto entro ±10 min e 19–32% entro ±20 min. Le foto consecutive sono quasi identiche: il leave-one-out semplice era gonfiato (data leakage temporale).
+
+### Problemi noti
+- Azioni: l'errore principale resta **si_pulisce invece di riposa** (×12). Nella postura il modello scrive spesso "becco tra le piume dell'ala", che è l'esempio del prompt: lo sta copiando, va tolto e rimisurato.
+- Acqua: sbaglia in tutte e due le direzioni (da_rifornire invece di ok ×5, ok invece di da_rifornire ×3, non_visibile ×4): la bottiglia trasparente dalla webcam è difficile; la regola dell'1/5 non ha aiutato.
+
+---
+
 ## [0.12.1] — 2026-10-14 · Codice diviso in cartelle
 
 ### Modificato

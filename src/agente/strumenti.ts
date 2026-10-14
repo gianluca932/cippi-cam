@@ -104,7 +104,8 @@ export const cercaMomentiTool = tool(
 export const statoGabbiaTool = tool(
   async ({ giorno = oggi() }) => {
     const foto = await gabbiaDelGiorno(giorno);
-    if (!foto.length) return json({ giorno, nota: "Nessuna foto in questo giorno." });
+    // La gabbia non si controlla a ogni foto ma ogni ~20 minuti: qui ci sono solo i controlli.
+    if (!foto.length) return json({ giorno, nota: "Nessun controllo della gabbia in questo giorno." });
 
     // Riassunto già calcolato: un modello piccolo sbaglia se deve dedurlo da una lista lunga.
     const riassunto = (campo: "acqua" | "cibo") => {
@@ -114,19 +115,20 @@ export const statoGabbiaTool = tool(
       for (const f of foto) if (f[campo]) perLivello[f[campo]!] = (perLivello[f[campo]!] ?? 0) + 1;
       return {
         ultimo_livello_visto: ultima ? `${ultima[campo]} alle ${hhmm(ultima.ora)}` : "mai visibile oggi",
-        foto_per_livello: perLivello,
+        controlli_per_livello: perLivello,
       };
     };
     return json({
       giorno,
-      foto_analizzate: foto.length,
+      controlli: foto.length,
+      ultimo_controllo: hhmm(foto.at(-1)!.ora),
       acqua: riassunto("acqua"),
       cibo: riassunto("cibo"),
     });
   },
   {
     name: "stato_gabbia",
-    description: "Livello di acqua e cibo nella gabbia: l'ultimo visto nel giorno e quante foto per livello.",
+    description: "Livello di acqua e cibo nella gabbia: l'ultimo controllo del giorno (con l'ora) e quanti controlli per livello.",
     schema: z.object({ giorno: Giorno }),
   },
 );

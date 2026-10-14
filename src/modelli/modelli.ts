@@ -2,7 +2,7 @@ import { HumanMessage } from "@langchain/core/messages";
 import { dimensioniEmbeddingDb } from "../db/db.js";
 import { configLlm, modelloEmbedding, modelloVisione, unaVolta } from "./llm.js";
 import { z } from "zod";
-import { AnalisiFoto, type EventoUccellino } from "./schema.js";
+import { AnalisiFoto, AnalisiGabbia, type EventoUccellino } from "./schema.js";
 import { COLORI, nomeDaColore } from "../comune/uccellini.js";
 
 // Le due chiamate ai modelli della pipeline delle foto: visione (foto → JSON) ed embedding (testo → vettore).
@@ -16,11 +16,6 @@ const prompt = `Nella gabbia vivono ${COLORI.length} pappagallini (budgerigar), 
 Guarda con attenzione tutta la gabbia, anche dietro posatoi, sbarre e giocattoli. Rispondi SOLO con JSON.
 Scrivi in italiano, frasi brevi e CONCRETE: nomina oggetti, colori e parti della gabbia, niente aggettivi generici.
 - scena: max 15 parole sulla scena generale
-- gabbia: lo stato della gabbia
-  - note: max 12 parole su abbeveratoio, mangiatoia e fondo (es. "abbeveratoio a destra mezzo pieno, fondo con semi sparsi")
-  - acqua: "ok" se ce n'è abbastanza, "da_rifornire" se sta finendo o è finita, "non_visibile"
-  - cibo: "ok" se ce n'è abbastanza, "da_rifornire" se sta finendo o è finito, "non_visibile"
-  Se non riesci a capire un livello (contenitore coperto o opaco), usa non_visibile: non tirare a indovinare.
 - uccellini: SEMPRE ${COLORI.length} elementi, uno per colore (${COLORI.join(", ")}). Per ognuno, in quest'ordine:
   - colore: il colore del pappagallino che stai descrivendo
   - posizione: max 6 parole (es. "posatoio alto, lato destro")
@@ -54,9 +49,26 @@ export class RispostaNonValida extends Error {
   }
 }
 
-/** Foto → analisi validata con Zod. Su Ollama chiamata nativa, sugli altri provider LangChain (vedi sotto il perché). */
-export async function classifyImage(imageBase64: string): Promise<{ analisi: AnalisiFoto; tempi: TempiVisione }> {
-  return configLlm.provider === "ollama" ? classificaConOllama(imageBase64) : classificaConLangChain(imageBase64);
+// Il prompt della gabbia: solo acqua e cibo, con le regole che valgono per questa gabbia.
+// È separato da quello delle azioni: così una regola qui non cambia le risposte sugli uccellini.
+const promptGabbia = `Nella foto c'è una gabbia per pappagallini con DUE mangiatoie (vaschette per i semi) e un abbeveratoio.
+Rispondi SOLO con JSON, in italiano.
+- note: max 12 parole su cosa vedi nell'abbeveratoio e nelle due mangiatoie (quanto sono piene)
+- acqua: "da_rifornire" SOLO se l'acqua nella bottiglia dell'abbeveratoio è meno di 1/5 dell'altezza o è finita; altrimenti "ok" (anche se è a metà); "non_visibile" se non si vede
+- cibo: ci sono DUE mangiatoie. "da_rifornire" se ANCHE UNA SOLA è vuota o quasi vuota; "ok" solo se sono piene tutte e due; "non_visibile" se non si vedono
+Se non riesci a capire un livello (contenitore coperto o opaco), usa "non_visibile": non tirare a indovinare.`;
+
+/** Foto → cosa fanno gli uccellini (validato con Zod). Gira a ogni foto. */
+export const classifyImage = (imageBase64: string) => guarda(AnalisiFoto, prompt, imageBase64, "analisi_foto");
+
+/** Foto → acqua e cibo (validato con Zod). Gira solo ogni GABBIA_OGNI_MIN minuti, vedi foto/importazione.ts. */
+export const classifyGabbia = (imageBase64: string) => guarda(AnalisiGabbia, promptGabbia, imageBase64, "analisi_gabbia");
+
+/** Il modello di visione guarda una foto e risponde secondo lo schema. Su Ollama chiamata nativa, altrove LangChain. */
+async function guarda<T>(schema: z.ZodType<T>, testo: string, imageBase64: string, nome: string) {
+  return configLlm.provider === "ollama"
+    ? guardaConOllama(schema, testo, imageBase64)
+    : guardaConLangChain(schema, testo, imageBase64, nome);
 }
 
 // ⚠️ Perché su Ollama NON usiamo LangChain per la visione (misurato il 2026-10-14)
@@ -64,7 +76,7 @@ export async function classifyImage(imageBase64: string): Promise<{ analisi: Ana
 // (convertHumanGenericMessagesToOllama). Per il modello è un input diverso, e il risultato peggiora:
 // sulle stesse 32 etichette, 15 giuste con un messaggio solo contro 8 con due messaggi.
 // Quindi su Ollama mandiamo noi la richiesta, con testo e immagine nello stesso messaggio.
-async function classificaConOllama(imageBase64: string) {
+async function guardaConOllama<T>(schema: z.ZodType<T>, testo: string, imageBase64: string): Promise<{ analisi: T; tempi: TempiVisione }> {
   const res = await fetch(`${configLlm.ollamaUrl}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -72,8 +84,8 @@ async function classificaConOllama(imageBase64: string) {
       model: configLlm.visione,
       stream: false,
       think: false, // niente ragionamento: per classificare è solo più lento
-      format: z.toJSONSchema(AnalisiFoto), // la grammatica: il modello può scrivere solo JSON valido per lo schema
-      messages: [{ role: "user", content: prompt, images: [imageBase64] }], // UN messaggio: testo + immagine
+      format: z.toJSONSchema(schema), // la grammatica: il modello può scrivere solo JSON valido per lo schema
+      messages: [{ role: "user", content: testo, images: [imageBase64] }], // UN messaggio: testo + immagine
       options: { temperature: 0, num_ctx: 8192 },
     }),
   });
@@ -85,7 +97,7 @@ async function classificaConOllama(imageBase64: string) {
     eval_count?: number;
   };
 
-  const controllo = AnalisiFoto.safeParse(JSON.parse(dati.message.content));
+  const controllo = schema.safeParse(JSON.parse(dati.message.content));
   if (!controllo.success) throw new RispostaNonValida(dati.message.content, controllo.error.issues);
   const secondi = (ns?: number) => (ns ? ns / 1e9 : undefined);
   return {
@@ -103,23 +115,28 @@ async function classificaConOllama(imageBase64: string) {
 //   1. passa lo schema al modello (su Bedrock come un tool da chiamare obbligatoriamente);
 //   2. legge la risposta e la valida con Zod.
 // includeRaw: true restituisce anche il messaggio grezzo, per token e testo nei log.
-async function classificaConLangChain(imageBase64: string) {
+async function guardaConLangChain<T>(
+  schema: z.ZodType<T>,
+  testo: string,
+  imageBase64: string,
+  nome: string,
+): Promise<{ analisi: T; tempi: TempiVisione }> {
   const modello = await unaVolta("visione", modelloVisione);
-  const strutturato = modello.withStructuredOutput(AnalisiFoto, { name: "analisi_foto", includeRaw: true });
+  const strutturato = modello.withStructuredOutput(schema as z.ZodType<Record<string, unknown>>, { name: nome, includeRaw: true });
 
   const { raw, parsed } = await strutturato.invoke([
     new HumanMessage({
       content: [
-        { type: "text", text: prompt },
+        { type: "text", text: testo },
         { type: "image_url", image_url: `data:image/jpeg;base64,${imageBase64}` },
       ],
     }),
   ]);
 
-  const testo = typeof raw.content === "string" ? raw.content : JSON.stringify(raw.content);
-  // Ricontrollo esplicito con il nostro schema: comprende anche il .refine() (un evento per colore).
-  const controllo = AnalisiFoto.safeParse(parsed);
-  if (!controllo.success) throw new RispostaNonValida(testo, controllo.error.issues);
+  const grezzo = typeof raw.content === "string" ? raw.content : JSON.stringify(raw.content);
+  // Ricontrollo esplicito con il nostro schema: comprende anche i .refine() (es. un evento per colore).
+  const controllo = schema.safeParse(parsed);
+  if (!controllo.success) throw new RispostaNonValida(grezzo, controllo.error.issues);
 
   const usage = (raw as { usage_metadata?: { output_tokens?: number } }).usage_metadata;
   return { analisi: controllo.data, tempi: { tokenRisposta: usage?.output_tokens } };

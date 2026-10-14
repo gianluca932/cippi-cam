@@ -2,7 +2,7 @@
 
 **Un diario automatico di due pappagallini, Cippi e Sky, costruito con un modello di visione, output strutturato validato con Zod, Postgres + pgvector e un agente LangChain/LangGraph con tool. Gira in locale con Ollama, e passa ad Amazon Bedrock cambiando una variabile d'ambiente.**
 
-Una webcam scatta una foto al minuto. Un modello di visione locale guarda la foto, dice cosa sta facendo ciascun uccellino (mangia, beve, si pulisce, gioca, riposa…) e com'è la gabbia (acqua, cibo, pulizia). Il risultato viene validato, salvato in Postgres con un embedding per la ricerca semantica, e si può interrogare in chat: *"quante volte ha mangiato Cippi oggi?"*, *"quando Sky era nascosto dietro il posatoio?"*, *"c'è abbastanza acqua?"*.
+Una webcam scatta una foto al minuto. Un modello di visione locale guarda la foto, dice cosa sta facendo ciascun uccellino (mangia, beve, si pulisce, gioca, riposa…) e, con un secondo prompt ogni 20 minuti circa, com'è la gabbia (acqua e cibo). Il risultato viene validato, salvato in Postgres con un embedding per la ricerca semantica, e si può interrogare in chat: *"quante volte ha mangiato Cippi oggi?"*, *"quando Sky era nascosto dietro il posatoio?"*, *"c'è abbastanza acqua?"*.
 
 Il progetto è nato come esercizio pratico di AI engineering. L'obiettivo non era una demo che funziona una volta, ma un sistema **misurabile**: con un set di valutazione, guardrail nel codice e numeri onesti su dove sbaglia.
 
@@ -34,7 +34,7 @@ Il progetto è nato come esercizio pratico di AI engineering. L'obiettivo non er
 
 | Pagina | Cosa c'è |
 |---|---|
-| **Oggi** | Galleria delle foto del giorno: per ogni uccellino azione, oggetto con cui interagisce e confidenza; acqua, cibo e pulizia della gabbia. Accanto, la chat con l'agente. |
+| **Oggi** | Galleria delle foto del giorno: per ogni uccellino azione, oggetto con cui interagisce e confidenza; acqua e cibo della gabbia sulle foto in cui è stata controllata. Accanto, la chat con l'agente. |
 | **Live** | Il video della webcam in diretta, il pulsante **Avvia registrazione** e gli scatti che compaiono man mano, con lo stato dell'analisi (in coda → il modello sta guardando → risultato). |
 | **Archivio** | I giorni passati, con il riepilogo delle azioni, e la galleria di ciascun giorno. |
 | **Configurazione** | Uccellini, modelli, database, storage e rete, in versione locale e (in preparazione) AWS. |
@@ -119,7 +119,7 @@ Postgres 17 con l'estensione **pgvector**, in Docker ([db/init.sql](db/init.sql)
 
 ```
 uccellini (nome, colore)
-foto      (id, ora, percorso, modello, scena, acqua, cibo, pulizia, note_gabbia, embedding_immagine)
+foto      (id, ora, percorso, modello, scena, acqua, cibo, note_gabbia, embedding_immagine)
 eventi    (id, foto_id, uccellino, azione, confidenza, descrizione, posizione, postura,
            con_cosa, oggetti_vicini, embedding_testo vector(768), azione_umana, controllato_il)
 ```
@@ -213,6 +213,7 @@ ogni 60s:  scatta → photos/cam_….jpg ──► coda ──► lavoratore (un
 - Correggere aggiorna subito galleria e agente (tramite la vista) e **ricalcola l'embedding**, il cui testo contiene l'azione.
 - Le correzioni diventano **etichette** per `npm run valuta`.
 - Lo stesso vale per **acqua e cibo** (`acqua_umana`, `cibo_umano`, vista `foto_effettive`), con due soli livelli legati a una decisione: `ok` / `da_rifornire` (+ `non_visibile`).
+- **La gabbia ha un prompt tutto suo** (`classifyGabbia` in `src/modelli/modelli.ts`), separato da quello delle azioni: le regole sul cibo nel prompt unico peggioravano le azioni. Non gira a ogni foto: ogni `GABBIA_OGNI_MIN` minuti (20), o dopo `GABBIA_RICONTROLLO_MIN` (5) se l'ultimo controllo diceva `da_rifornire`, così un avviso futuro parte solo su un problema confermato. Sulle altre foto acqua e cibo restano vuoti (`NULL`).
 
 ---
 

@@ -5,10 +5,8 @@ import { chiudi, fotoEsiste, sincronizzaUccellini } from "../db/db.js";
 import { CONVERTITE, importaFoto } from "../foto/importazione.js";
 import { configLlm } from "../modelli/llm.js";
 import { controllaEmbedding } from "../modelli/modelli.js";
-import type { Fase } from "../foto/pipeline.js";
-import { LIVELLI_ALLARME, MIN_CONFIDENCE, type AnalisiFoto } from "../modelli/schema.js";
+import { NOMI_FASI, percentuale, riassunto } from "../foto/pipeline.js";
 import { barra, c, durata, Spinner } from "../comune/terminale.js";
-import { nomeDaColore } from "../comune/uccellini.js";
 
 // Importa le foto nuove: converte in JPG da 1024px (data/foto/), legge l'ora di scatto, classifica e salva.
 // Le foto già nel database vengono saltate, quindi si può rilanciare quando si vuole.
@@ -43,32 +41,6 @@ for (const file of candidati) {
   if (!ESTENSIONI.includes(ext)) continue;
   const { name } = parse(file);
   if (!perNome.has(name) || ext === ".heic") perNome.set(name, file);
-}
-
-// --- Grafica ---------------------------------------------------------------------------------
-
-const NOMI_FASI: Record<Fase, string> = {
-  conversione: "conversione",
-  visione: "modello di visione",
-  embedding: "embedding del testo",
-  salvataggio: "salvataggio nel diario",
-  impronta: "impronta CLIP",
-};
-
-const percentuale = (x: number) => `${Math.round(x * 100)}%`;
-const livello = (l?: string | null) => (l ?? "?").replaceAll("_", " ");
-
-// Il riassunto di una foto analizzata, in una riga.
-function riassunto(analisi: AnalisiFoto): string {
-  const uccellini = analisi.uccellini
-    .map((u) => {
-      const testo = `${nomeDaColore(u.colore)}: ${u.azione.replace("_", " ")} ${percentuale(u.confidenza)}`;
-      return u.confidenza < MIN_CONFIDENCE ? c.giallo(`${testo} (incerto)`) : testo;
-    })
-    .join(" · ");
-  const { acqua, cibo } = analisi.gabbia;
-  const allarme = (l: string) => (LIVELLI_ALLARME.includes(l as never) ? c.rosso(livello(l)) : livello(l));
-  return `   🐦 ${uccellini}   ${c.grigio("💧")} ${allarme(acqua)} ${c.grigio("· 🌾")} ${allarme(cibo)}`;
 }
 
 let importate = 0, saltate = 0, scartate = 0;
@@ -111,7 +83,7 @@ try {
     if (risultato.esito === "importata") {
       importate++;
       tempiFoto.push((performance.now() - inizioFoto) / 1000);
-      console.log(riassunto(risultato.analisi));
+      console.log(riassunto(risultato.analisi, risultato.gabbia));
       console.log(c.grigio(`   💾 foto #${risultato.fotoId} · scattata alle ${risultato.ora.toLocaleTimeString("it-IT")}\n`));
     } else if (risultato.esito === "scartata") {
       // Una risposta non valida non ferma l'import: la foto resta da riprovare al prossimo giro.

@@ -42,10 +42,13 @@ export const EventoUccellino = z.object({
 export const LIVELLI = ["ok", "da_rifornire", "non_visibile"] as const;
 export const LIVELLI_ALLARME: readonly Livello[] = ["da_rifornire"];
 
-// Lo stato della gabbia: riguarda la foto, non il singolo uccellino.
-// Gli enum costano 2-3 token l'uno: informazioni utili quasi gratis.
-export const StatoGabbia = z.object({
-  note: z.string().max(80), // cosa si vede di abbeveratoio, mangiatoia e fondo
+// Due analisi separate, ognuna con il suo prompt (vedi modelli.ts):
+//   AnalisiFoto  → cosa fanno gli uccellini: a OGNI foto;
+//   AnalisiGabbia → acqua e cibo: solo ogni GABBIA_OGNI_MIN minuti (i livelli non cambiano in un minuto).
+// Separarle evita che una regola sulla gabbia cambi le risposte sulle azioni (misurato: 17/21 → 12/21).
+
+export const AnalisiGabbia = z.object({
+  note: z.string().max(80), // cosa si vede di abbeveratoio e mangiatoie (prima delle decisioni: osserva, poi giudica)
   acqua: z.enum(LIVELLI),
   cibo: z.enum(LIVELLI),
 });
@@ -53,7 +56,6 @@ export const StatoGabbia = z.object({
 export const AnalisiFoto = z
   .object({
     scena: z.string().min(1).max(100),
-    gabbia: StatoGabbia,
     uccellini: z.array(EventoUccellino).length(COLORI.length),
   })
   // Non finisce nel JSON Schema per Ollama: è un controllo in più dopo la risposta.
@@ -64,6 +66,7 @@ export const AnalisiFoto = z
 export type Livello = (typeof LIVELLI)[number];
 export type EventoUccellino = z.infer<typeof EventoUccellino>;
 export type AnalisiFoto = z.infer<typeof AnalisiFoto>;
+export type AnalisiGabbia = z.infer<typeof AnalisiGabbia>;
 
 // Sotto questa soglia l'evento non viene considerato affidabile.
 export const MIN_CONFIDENCE = 0.6;

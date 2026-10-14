@@ -1,11 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { join, parse } from "node:path";
-import { fotoEsiste, salvaAnalisi, salvaEmbeddingImmagine } from "../db/db.js";
+import { fotoEsiste, salvaAnalisi, salvaControlloGabbia, salvaEmbeddingImmagine, ultimoControlloGabbia } from "../db/db.js";
 import { embeddingImmagine } from "../modelli/immagini.js";
 import { VISION_MODEL } from "../modelli/modelli.js";
-import { analizza, oraScatto, RispostaNonValida, stampa, type AvvisoFase } from "./pipeline.js";
-import type { AnalisiFoto } from "../modelli/schema.js";
+import { analizza, analizzaGabbia, oraScatto, RispostaNonValida, stampa, stampaGabbia, type AvvisoFase } from "./pipeline.js";
+import type { AnalisiFoto, AnalisiGabbia } from "../modelli/schema.js";
 
 // Importa UNA foto nel diario: converte in JPG da 1024px (data/foto/), analizza, salva.
 // Usato da `npm run importa` (tante foto) e dalla registrazione della pagina Live (una per scatto).
@@ -14,7 +14,7 @@ export const CONVERTITE = "data/foto";
 const LATO_MAX = "1024"; // meno pixel = meno token per il modello di visione
 
 export type EsitoImport =
-  | { esito: "importata"; fotoId: number; ora: Date; analisi: AnalisiFoto }
+  | { esito: "importata"; fotoId: number; ora: Date; analisi: AnalisiFoto; gabbia: AnalisiGabbia | null } // gabbia: null se non controllata
   | { esito: "presente" } // già nel diario
   | { esito: "scartata"; motivo: unknown }; // il modello ha risposto fuori schema: si riprova al prossimo giro
 
@@ -48,11 +48,40 @@ export async function importaFoto(
     onFase?.("impronta", "inizio");
     const ok = await salvaImpronta(fotoId, jpg);
     onFase?.("impronta", "fine", ok ? "512 numeri" : "non calcolata");
-    return { esito: "importata", fotoId, ora, analisi };
+
+    // La gabbia (acqua e cibo) solo se serve: i livelli non cambiano in un minuto.
+    let gabbia: AnalisiGabbia | null = null;
+    if (await serveControlloGabbia(ora)) {
+      try {
+        gabbia = await analizzaGabbia(jpg, onFase);
+        await salvaControlloGabbia(fotoId, gabbia);
+        if (log) stampaGabbia(gabbia);
+      } catch (err) {
+        // Un controllo fuori schema non butta via la foto: si riprova alla foto successiva.
+        if (!(err instanceof RispostaNonValida)) throw err;
+        console.warn(`⚠️  Controllo della gabbia scartato (risposta fuori schema): si riprova alla prossima foto.`);
+      }
+    }
+    return { esito: "importata", fotoId, ora, analisi, gabbia };
   } catch (err) {
     if (!(err instanceof RispostaNonValida)) throw err;
     return { esito: "scartata", motivo: err.issues };
   }
+}
+
+// --- Quando controllare la gabbia ---
+// Ogni GABBIA_OGNI_MIN minuti (default 20). Se l'ultimo controllo diceva "da_rifornire", si ricontrolla
+// dopo GABBIA_RICONTROLLO_MIN (default 5): così un avviso parte solo se il problema è confermato.
+// Il tempo è quello dello SCATTO, non dell'import: funziona anche importando foto vecchie, in ordine.
+const OGNI_MIN = Number(process.env.GABBIA_OGNI_MIN ?? 20);
+const RICONTROLLO_MIN = Number(process.env.GABBIA_RICONTROLLO_MIN ?? 5);
+
+async function serveControlloGabbia(ora: Date): Promise<boolean> {
+  const ultimo = await ultimoControlloGabbia(ora);
+  if (!ultimo) return true; // mai controllata: si controlla subito
+  const minuti = (ora.getTime() - ultimo.ora.getTime()) / 60_000;
+  const daConfermare = ultimo.acqua === "da_rifornire" || ultimo.cibo === "da_rifornire";
+  return minuti >= (daConfermare ? RICONTROLLO_MIN : OGNI_MIN);
 }
 
 // L'impronta CLIP della foto (ricerca per immagini). ~30 ms: non rallenta l'import.
