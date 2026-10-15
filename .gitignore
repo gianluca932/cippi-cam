@@ -4,3 +4,12 @@ node_modules/
 dist/
 /photos/
 /data/
+
+# Terraform: build delle Lambda, provider scaricati, stato (sta su S3) e variabili locali
+infra/build/
+infra/.terraform/
+*.tfstate
+*.tfstate.*
+infra/*.tfvars
+infra/**/piano
+infra/**/.terraform/

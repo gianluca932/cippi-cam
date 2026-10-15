@@ -7,6 +7,51 @@ Le sezioni **Misurato** riportano i risultati di `npm run valuta` e `npm run con
 
 ---
 
+## [0.14.0] — 2026-10-15 · Online su AWS con Terraform, Qwen su Bedrock e agente con gli orari
+
+### Aggiunto
+- **Infrastruttura su AWS in Terraform** ([infra/](infra/), regione `eu-south-1`), stato su S3. La pipeline: il Mac carica i JPG su S3 (`npm run carica`) → notifica → SQS (3 tentativi, poi dead letter queue per 14 giorni) → Lambda `analizza-foto` → Bedrock → RDS. Il sito: CloudFront davanti a S3 (frontend) e a una Lambda con Function URL e response streaming (API, la stessa `app.ts` del server locale).
+- **[src/server/app.ts](src/server/app.ts)**: le route comuni a server locale e Lambda; il server locale aggiunge solo la pagina Live. **[src/aws/](src/aws/)**: i due handler. **[src/foto/s3.ts](src/foto/s3.ts)**: chiavi e metadati (l'ora di scatto viaggia come metadato dell'oggetto).
+- **`DB_PROVIDER=pg|rds`** in [src/db/connessione.ts](src/db/connessione.ts): su RDS l'utente `diario` entra senza password, con un token IAM firmato e in SSL verificando il certificato di RDS ([config/rds-ca-eu-south-1.pem](config/rds-ca-eu-south-1.pem)). Le query di `db.ts` non cambiano.
+- Comandi: `carica`, `build:lambda` (esbuild), `db:migra:aws` (schema, migrazioni, uccellini e utente `diario`, con la password del master letta da Secrets Manager), `deploy:web`, `copia-correzioni` (le correzioni della galleria dal Postgres locale a RDS, abbinate per percorso e uccellino, con gli embedding ricalcolati).
+- **Password su tutto il sito**, controllata da una CloudFront Function. Con la password solo sull'API il browser non mostrava il riquadro di login (non lo fa per le `fetch`) e la pagina vedeva l'API "offline". L'API la controlla anche per conto suo.
+- **Agente: i "quando"** ([src/agente/episodi.ts](src/agente/episodi.ts), [strumenti.ts](src/agente/strumenti.ts)). L'agente diceva che acqua e cibo non erano mai mancati insieme (erano scarsi tutti e due dalle 16:23 alle 16:30) e rispondeva a "hanno giocato insieme?" una volta sì e una volta no. Il problema erano i tool, che non avevano gli orari:
+  - `stato_gabbia` ed `eventi_del_giorno` restituiscono gli intervalli già calcolati (`acqua_scarsa`, `cibo_scarso`, `acqua_e_cibo_scarsi_insieme`) e, con `ora`, com'era la gabbia in quel momento;
+  - nuovo tool `momenti_insieme`: le sovrapposizioni degli episodi dei due uccellini, calcolate dal codice.
+
+### Modificato
+- **Modelli su Bedrock scelti misurando** (vedi Misurato): Qwen3-VL 235B per la visione, Qwen3 235B per la chat (chiama i tool via Converse), Titan Text Embeddings v2 a 1024 dimensioni.
+- **Database: RDS Postgres `db.t4g.micro` invece di Aurora Serverless v2 + Data API.** Sul piano free di AWS Aurora si crea solo in "express configuration", che il provider Terraform (6.69) non supporta; il piano free limita anche i backup a 1 giorno. RDS è pubblico sulla 5432 perché le Lambda stanno fuori dalla VPC (dentro servirebbe una NAT, ~35 $/mese); per entrare servono SSL e il token IAM. Costo fisso: ~3,6 $/mese di IPv4 pubblico.
+- Gli zip delle Lambda passano da S3: con l'upload diretto il provider falliva con `bufio.Scanner: token too long`.
+- Prompt della visione: tolto l'esempio di postura "testa girata, becco tra le piume dell'ala", che il modello copiava (vedi Problemi noti).
+
+### Corretto
+- **La Lambda `analizza-foto` non partiva**: esbuild incorporava l'`import()` dinamico di CLIP e il suo import (external) finiva in cima a `index.mjs`. Con `splitting` resta un file a parte; il file principale passa da 2,4 a 0,4 MB.
+- L'API rispondeva 500 invece di 401 senza password: `onError` era registrato due volte e trasformava anche le `HTTPException` di Hono.
+- Su RDS la tabella `uccellini` era vuota (in locale la riempie il server all'avvio) e ogni evento falliva sulla chiave esterna: ora la riempie `db:migra:aws`.
+- `db:migra:aws` creava `embedding_testo` a 768 dimensioni se nella shell mancava `LLM_PROVIDER=bedrock`: ora lo imposta lo script e, a tabella vuota, la colonna si corregge da sola.
+
+### Misurato
+`npm run valuta` sulle 57 foto etichettate, stesso prompt, modelli su Bedrock:
+
+| | qwen3.5:9b locale (0.13.0) | **Qwen3-VL 235B** | Nova 2 Lite |
+|---|---|---|---|
+| azioni (101) | 66 (65%) | **57 (56%)** | 51 (50%) |
+| acqua (36) | 15/27 (56%) | 14 (39%) | 14 (39%) |
+| cibo (31) | 28 (90%) | **29 (94%)** | 23 (74%) |
+| tempo a foto | ~40 s | ~4 s | ~3 s |
+
+- Qwen3-VL: l'errore più frequente è "mangia" dove l'etichetta dice "riposa" (19 su 44), probabilmente perché l'uccellino è vicino alla mangiatoia. Nova 2 Lite vede uccellini che l'etichetta segna come non visibili (19 volte) e dice "ok" quando il cibo è da rifornire (7 su 8).
+- Acqua: errori quasi simmetrici con tutti e due i modelli, cioè tirano a indovinare. Sembra un limite dell'inquadratura più che del modello.
+- Online, `valuta --salvate` con le correzioni copiate: azioni 56/101 (55%), coerente con la misura sopra.
+- Claude Haiku 4.5 non misurato: Bedrock lo blocca finché non si compila il modulo sul caso d'uso di Anthropic.
+
+### Problemi noti
+- **Il confronto con il modello locale non è del tutto alla pari**: rispetto alla misura della 0.13.0 il prompt ha perso l'esempio di postura, e le etichette dell'acqua sono passate da 27 a 36. Manca un `valuta` di `qwen3.5:9b` con il prompt attuale.
+- **Le modifiche all'agente non sono ancora state misurate con `npm run chiedi`**, né in locale né con Qwen3 235B su Bedrock.
+- Su AWS il controllo della gabbia gira ogni 20 minuti come in locale: sulle foto caricate in blocco ce ne sono pochi, quindi acqua e cibo si vedono su poche foto.
+- L'SDK di AWS avvisa che dal 2027 non supporterà più Node 20: le Lambda sono già su Node 22, il Mac va aggiornato.
+
 ## [0.13.0] — 2026-10-14 · Prompt separato per la gabbia, esperimenti CLIP e classificatori
 
 ### Aggiunto

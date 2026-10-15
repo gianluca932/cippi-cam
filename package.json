@@ -1,6 +1,6 @@
 {
   "name": "cippi-cam",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -18,9 +18,17 @@
     "dev": "node scripts/dev.mjs",
     "embedding-immagini": "tsx src/comandi/embedding-immagini.ts",
     "clip-zero-shot": "tsx src/comandi/clip-zero-shot.ts",
-    "classificatore": "tsx src/comandi/classificatore.ts"
+    "classificatore": "tsx src/comandi/classificatore.ts",
+    "carica": "tsx src/comandi/carica.ts",
+    "build:lambda": "node scripts/build-lambda.mjs",
+    "db:migra:aws": "LLM_PROVIDER=bedrock tsx src/comandi/migra-aws.ts",
+    "copia-correzioni": "DB_PROVIDER=rds LLM_PROVIDER=bedrock EMBED_MODEL=amazon.titan-embed-text-v2:0 tsx src/comandi/copia-correzioni.ts",
+    "deploy:web": "node scripts/deploy-web.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1152.0",
+    "@aws-sdk/client-secrets-manager": "^3.1152.0",
+    "@aws-sdk/rds-signer": "^3.1152.0",
     "@hono/node-server": "^2.1.5",
     "@huggingface/transformers": "^4.3.1",
     "@langchain/aws": "^1.4.6",
@@ -34,8 +42,10 @@
     "zod": "^4.1.0"
   },
   "devDependencies": {
+    "@types/aws-lambda": "^8.10.164",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.23.1",
+    "esbuild": "^0.28.2",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
   }

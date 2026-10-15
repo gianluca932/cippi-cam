@@ -26,7 +26,7 @@ Il progetto è nato come esercizio pratico di AI engineering. L'obiettivo non er
 - [Comandi](#comandi)
 - [Struttura del progetto](#struttura-del-progetto)
 - [Limiti noti](#limiti-noti)
-- [Roadmap: verso AWS](#roadmap-verso-aws)
+- [Su AWS](#su-aws)
 
 ---
 
@@ -330,6 +330,11 @@ Gli uccellini si configurano in [config/uccellini.json](config/uccellini.json):
 | `npm run valuta -- --salvate` | previsioni salvate contro le tue etichette (azioni, acqua, cibo), senza chiamare il modello |
 | `npm run confronta-embedding -- nomic-embed-text bge-m3` | confronta modelli di embedding su `eval/ricerca.json` |
 | `npm run db:up` / `db:migra` / `db:psql` | avvia Postgres, applica le migrazioni, apre la console SQL |
+| `npm run carica` | AWS: converte e carica su S3 le foto di `photos/`; l'analisi parte da sola |
+| `npm run build:lambda` | AWS: impacchetta le Lambda in `infra/build/` (prima di `terraform plan`) |
+| `npm run db:migra:aws` | AWS: schema, migrazioni, uccellini e utente `diario` su RDS (si può rilanciare) |
+| `npm run deploy:web` | AWS: compila il frontend online e lo pubblica su S3 + CloudFront |
+| `npm run copia-correzioni` | AWS: copia le correzioni della galleria dal Postgres locale a RDS |
 
 Variabili d'ambiente: vedi [.env.example](.env.example) (`LLM_PROVIDER`, `VISION_MODEL`, `AGENT_MODEL`, `EMBED_MODEL`, `OLLAMA_URL`, `AWS_REGION`, `DATABASE_URL`…). Si mettono in `.env` o si passano davanti al comando (`LLM_PROVIDER=bedrock npm run valuta`).
 
@@ -373,34 +378,38 @@ web/src/
 
 ---
 
-## Roadmap: verso AWS
+## Su AWS
 
-La pipeline è già divisa in pezzi che corrispondono ai servizi AWS:
+Dalla 0.14.0 il diario gira anche online (regione `eu-south-1`, Milano), con l'infrastruttura in Terraform ([infra/](infra/)):
 
 ```mermaid
 flowchart LR
-    CAM[Webcam] -->|presigned URL| S3[(S3)]
+    MAC[Mac: npm run carica] -->|JPG + ora di scatto| S3[(S3)]
     S3 -->|ObjectCreated| SQS[SQS + DLQ]
     SQS --> L[Lambda<br/>analizza-foto]
-    L --> BR[Bedrock<br/>visione + embedding]
-    L --> RDS[(RDS Postgres<br/>+ pgvector)]
-    API[API su Fargate] --> RDS
-    WEB[Frontend] --> API
+    L --> BR[Bedrock<br/>Qwen3-VL + Titan]
+    L --> RDS[(RDS Postgres 17<br/>+ pgvector)]
+    CF[CloudFront<br/>+ password] --> WEB[S3: frontend]
+    CF -->|/api| API[Lambda API<br/>Hono, streaming]
+    API --> RDS
+    API --> BR
 ```
 
 | Locale | AWS |
 |---|---|
-| cartella `photos/` | S3 |
-| coda in memoria | SQS, con retry e dead letter queue |
-| `importaFoto()` | handler della Lambda |
-| Ollama (`qwen3.5:9b`) | Bedrock (modello con visione + Titan/Cohere embeddings): già pronto via `LLM_PROVIDER=bedrock` |
-| Postgres in Docker | RDS Postgres + pgvector |
-| server Hono | container su Fargate, o Lambda con `hono/aws-lambda` |
+| cartella `photos/` | S3 (le foto le carica `npm run carica`: la webcam resta sul Mac) |
+| coda in memoria | SQS, 3 tentativi e poi dead letter queue |
+| `importaFoto()` | `importaJpg()` dentro la Lambda `analizza-foto` |
+| Ollama (`qwen3.5:9b`, `nomic-embed-text`) | Bedrock: Qwen3-VL 235B (visione), Qwen3 235B (chat), Titan v2 (embedding, 1024 dim.) |
+| Postgres in Docker | RDS Postgres `db.t4g.micro`: SSL e login con token IAM, niente password per l'app |
+| server Hono | lo stesso `app.ts` in una Lambda con Function URL e response streaming |
+
+Le scelte e i loro perché sono nei commenti dei file `.tf` e nel [CHANGELOG](CHANGELOG.md) della 0.14.0 (Aurora scartata per il piano free, Lambda fuori dalla VPC per non pagare una NAT, modelli scelti misurando con `valuta`).
 
 Prossimi passi:
 
 - [x] **Provider astratto** (Ollama | Bedrock) con LangChain, scelto via env.
-- [ ] La stessa `npm run valuta` su Ollama e Bedrock: accuratezza, tempo e **costo a foto**, locale contro cloud.
+- [x] La stessa `npm run valuta` su Ollama e Bedrock (0.14.0): Qwen3-VL azioni 56% contro 65% in locale, ~4 s a foto contro ~40 s.
 - [ ] **Voto a maggioranza** su scatti consecutivi, per stabilizzare le azioni e i conteggi degli episodi.
 - [ ] **Few-shot visivo** con le correzioni della galleria come esempi nel prompt.
 - [ ] **Embedding delle immagini (CLIP)** e confronto con la ricerca sulle descrizioni.

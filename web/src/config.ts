@@ -34,7 +34,6 @@ export type AppConfig = {
   };
 };
 
-const TBD = "da definire";
 
 export const configs: Record<Ambiente, AppConfig> = {
   locale: {
@@ -53,24 +52,25 @@ export const configs: Record<Ambiente, AppConfig> = {
     rete: { accesso: "solo localhost" },
   },
   aws: {
+    // Le scelte dell'infrastruttura (infra/*.tf). I modelli di Bedrock si decidono misurando con valuta.
     modelli: {
-      provider: TBD, // Ollama su EC2 con GPU oppure Amazon Bedrock
-      endpoint: TBD,
-      visione: TBD,
-      chat: TBD,
-      embedding: TBD,
+      provider: "Amazon Bedrock",
+      endpoint: "bedrock-runtime.eu-south-1.amazonaws.com",
+      visione: "Qwen3-VL 235B (azioni 56%, cibo 94% su 57 foto)",
+      chat: "Qwen3 235B (testuale, con tool)",
+      embedding: "Titan Text Embeddings v2 (1024 dim.)",
       contesto: 8192,
       sogliaConfidenza: 0.6,
     },
-    database: { tipo: "RDS Postgres + pgvector", connessione: TBD }, // stesso SQL del locale
-    storageFoto: { tipo: "S3", percorso: `s3://${TBD}` },
-    calcolo: { tipo: TBD, dettagli: TBD }, // Lambda, ECS Fargate o EC2
+    database: { tipo: "RDS PostgreSQL 17 (db.t4g.micro) + pgvector", connessione: "SSL + token IAM, senza password" }, // stesso SQL del locale
+    storageFoto: { tipo: "S3", percorso: "s3://cippi-cam-foto-<account>/data/foto/" },
+    calcolo: { tipo: "AWS Lambda (Node 22, arm64)", dettagli: "S3 → SQS + DLQ → Lambda di analisi; API Hono in streaming" },
     rete: {
       region: "eu-south-1 (Milano)",
-      vpc: TBD,
-      subnet: TBD,
-      securityGroup: TBD,
-      accesso: TBD,
+      vpc: "solo per il database; le Lambda stanno fuori, senza NAT",
+      subnet: "2, in due zone di disponibilità",
+      securityGroup: "solo la 5432: per entrare servono SSL e un token IAM",
+      accesso: "CloudFront + password (Basic Auth)",
     },
   },
 };

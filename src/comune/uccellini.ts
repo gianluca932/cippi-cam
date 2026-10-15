@@ -1,5 +1,6 @@
-import { readFileSync } from "node:fs";
 import { z } from "zod";
+// Import del JSON (non lettura da disco): così finisce anche dentro il pacchetto delle Lambda.
+import config from "../../config/uccellini.json" with { type: "json" };
 
 // Chi vive nella gabbia: si configura in config/uccellini.json.
 // Il modello riconosce solo il colore; il nome lo assegna il codice, così non può scambiarli.
@@ -9,15 +10,13 @@ const Uccellino = z.object({
 });
 export type Uccellino = z.infer<typeof Uccellino>;
 
-const CONFIG_PATH = new URL("../../config/uccellini.json", import.meta.url);
-
 export const UCCELLINI = z
   .array(Uccellino)
   .min(1)
   .refine((us) => new Set(us.map((u) => u.nome)).size === us.length, { message: "Nomi duplicati" })
   // Per ora l'identità passa dal colore: due uccellini dello stesso colore richiederanno un altro criterio.
   .refine((us) => new Set(us.map((u) => u.colore)).size === us.length, { message: "Colori duplicati" })
-  .parse(JSON.parse(readFileSync(CONFIG_PATH, "utf8")));
+  .parse(config);
 
 export const COLORI = UCCELLINI.map((u) => u.colore) as [string, ...string[]];
 export const NOMI = UCCELLINI.map((u) => u.nome) as [string, ...string[]];

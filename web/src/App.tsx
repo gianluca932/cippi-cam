@@ -8,9 +8,13 @@ import { Credits } from "./pages/Credits";
 import { Live } from "./pages/Live";
 import { Oggi } from "./pages/Oggi";
 
+// La versione online (AWS) si compila con VITE_ONLINE=1 (npm run deploy:web): niente pagina Live,
+// perché la webcam e la registrazione esistono solo sul Mac.
+const ONLINE = import.meta.env.VITE_ONLINE === "1";
+
 const LINKS = [
   { to: "/", label: "Oggi" },
-  { to: "/live", label: "Live" },
+  ...(ONLINE ? [] : [{ to: "/live", label: "Live" }]),
   { to: "/archivio", label: "Archivio" },
   { to: "/configurazione", label: "Configurazione" },
   { to: "/credits", label: "Credits" },
@@ -37,7 +41,9 @@ function StatoSistema() {
     <div className="stato-sistema" title={error ?? undefined}>
       <span className={`stato-punto ${stato}`} />
       <span>{testo}</span>
-      <span className="stato-dettaglio">Locale · {configs.locale.modelli.visione}</span>
+      <span className="stato-dettaglio">
+        {ONLINE ? `AWS · ${configs.aws.modelli.visione}` : `Locale · ${configs.locale.modelli.visione}`}
+      </span>
     </div>
   );
 }
@@ -65,7 +71,7 @@ export function App() {
       <div className="app">
         <Routes>
           <Route path="/" element={<Oggi />} />
-          <Route path="/live" element={<Live />} />
+          {!ONLINE && <Route path="/live" element={<Live />} />}
           <Route path="/archivio" element={<Archivio />} />
           <Route path="/archivio/:giorno" element={<ArchivioGiorno />} />
           <Route path="/configurazione" element={<Configurazione />} />

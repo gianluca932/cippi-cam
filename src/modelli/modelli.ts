@@ -1,6 +1,11 @@
 import { HumanMessage } from "@langchain/core/messages";
 import { dimensioniEmbeddingDb } from "../db/db.js";
-import { configLlm, modelloEmbedding, modelloVisione, unaVolta } from "./llm.js";
+import {
+  configLlm,
+  modelloEmbedding,
+  modelloVisione,
+  unaVolta,
+} from "./llm.js";
 import { z } from "zod";
 import { AnalisiFoto, AnalisiGabbia, type EventoUccellino } from "./schema.js";
 import { COLORI, nomeDaColore } from "../comune/uccellini.js";
@@ -19,7 +24,7 @@ Scrivi in italiano, frasi brevi e CONCRETE: nomina oggetti, colori e parti della
 - uccellini: SEMPRE ${COLORI.length} elementi, uno per colore (${COLORI.join(", ")}). Per ognuno, in quest'ordine:
   - colore: il colore del pappagallino che stai descrivendo
   - posizione: max 6 parole (es. "posatoio alto, lato destro")
-  - postura: max 8 parole, soprattutto dove sono testa e becco (es. "testa girata, becco tra le piume dell'ala")
+  - postura: max 8 parole, soprattutto dove sono testa e becco
   - con_cosa: l'oggetto che tocca con becco o zampe (es. "campanellino", "pallina gialla", "mangiatoia", "abbeveratoio", "specchio", "posatoio"); "niente" se non tocca nulla
   - oggetti_vicini: fino a 3 oggetti vicini a lui
   - descrizione: max 15 parole, cosa fa e con cosa (es. "becca il campanellino giallo appeso al soffitto")
@@ -44,7 +49,10 @@ export type TempiVisione = {
 
 /** Risposta che non rispetta lo schema: chi chiama decide cosa farne (saltare la foto, riprovare…). */
 export class RispostaNonValida extends Error {
-  constructor(public raw: string, public issues: unknown) {
+  constructor(
+    public raw: string,
+    public issues: unknown,
+  ) {
     super("Risposta del modello non valida per lo schema");
   }
 }
@@ -59,13 +67,21 @@ Rispondi SOLO con JSON, in italiano.
 Se non riesci a capire un livello (contenitore coperto o opaco), usa "non_visibile": non tirare a indovinare.`;
 
 /** Foto → cosa fanno gli uccellini (validato con Zod). Gira a ogni foto. */
-export const classifyImage = (imageBase64: string) => guarda(AnalisiFoto, prompt, imageBase64, "analisi_foto");
+export const classifyImage = (imageBase64: string) =>
+  guarda(AnalisiFoto, prompt, imageBase64, "analisi_foto");
 
 /** Foto → acqua e cibo (validato con Zod). Gira solo ogni GABBIA_OGNI_MIN minuti, vedi foto/importazione.ts. */
-export const classifyGabbia = (imageBase64: string) => guarda(AnalisiGabbia, promptGabbia, imageBase64, "analisi_gabbia");
+export const classifyGabbia = (imageBase64: string) =>
+  guarda(AnalisiGabbia, promptGabbia, imageBase64, "analisi_gabbia");
 
 /** Il modello di visione guarda una foto e risponde secondo lo schema. Su Ollama chiamata nativa, altrove LangChain. */
-async function guarda<T>(schema: z.ZodType<T>, testo: string, imageBase64: string, nome: string) {
+/* questo serve per il problema che abbiamo con @langchain/ollama: se il messaggio contiene testo + immagine, lo trasforma in due messaggi separati e il modello non capisce più la foto. */
+async function guarda<T>(
+  schema: z.ZodType<T>,
+  testo: string,
+  imageBase64: string,
+  nome: string,
+) {
   return configLlm.provider === "ollama"
     ? guardaConOllama(schema, testo, imageBase64)
     : guardaConLangChain(schema, testo, imageBase64, nome);
@@ -76,7 +92,11 @@ async function guarda<T>(schema: z.ZodType<T>, testo: string, imageBase64: strin
 // (convertHumanGenericMessagesToOllama). Per il modello è un input diverso, e il risultato peggiora:
 // sulle stesse 32 etichette, 15 giuste con un messaggio solo contro 8 con due messaggi.
 // Quindi su Ollama mandiamo noi la richiesta, con testo e immagine nello stesso messaggio.
-async function guardaConOllama<T>(schema: z.ZodType<T>, testo: string, imageBase64: string): Promise<{ analisi: T; tempi: TempiVisione }> {
+async function guardaConOllama<T>(
+  schema: z.ZodType<T>,
+  testo: string,
+  imageBase64: string,
+): Promise<{ analisi: T; tempi: TempiVisione }> {
   const res = await fetch(`${configLlm.ollamaUrl}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -89,7 +109,8 @@ async function guardaConOllama<T>(schema: z.ZodType<T>, testo: string, imageBase
       options: { temperature: 0, num_ctx: 8192 },
     }),
   });
-  if (!res.ok) throw new Error(`Ollama ha risposto ${res.status}: ${await res.text()}`);
+  if (!res.ok)
+    throw new Error(`Ollama ha risposto ${res.status}: ${await res.text()}`);
   const dati = (await res.json()) as {
     message: { content: string };
     prompt_eval_duration?: number; // nanosecondi
@@ -98,7 +119,8 @@ async function guardaConOllama<T>(schema: z.ZodType<T>, testo: string, imageBase
   };
 
   const controllo = schema.safeParse(JSON.parse(dati.message.content));
-  if (!controllo.success) throw new RispostaNonValida(dati.message.content, controllo.error.issues);
+  if (!controllo.success)
+    throw new RispostaNonValida(dati.message.content, controllo.error.issues);
   const secondi = (ns?: number) => (ns ? ns / 1e9 : undefined);
   return {
     analisi: controllo.data,
@@ -122,34 +144,50 @@ async function guardaConLangChain<T>(
   nome: string,
 ): Promise<{ analisi: T; tempi: TempiVisione }> {
   const modello = await unaVolta("visione", modelloVisione);
-  const strutturato = modello.withStructuredOutput(schema as z.ZodType<Record<string, unknown>>, { name: nome, includeRaw: true });
+  const strutturato = modello.withStructuredOutput(
+    schema as z.ZodType<Record<string, unknown>>,
+    { name: nome, includeRaw: true },
+  );
 
   const { raw, parsed } = await strutturato.invoke([
     new HumanMessage({
       content: [
         { type: "text", text: testo },
-        { type: "image_url", image_url: `data:image/jpeg;base64,${imageBase64}` },
+        {
+          type: "image_url",
+          image_url: `data:image/jpeg;base64,${imageBase64}`,
+        },
       ],
     }),
   ]);
 
-  const grezzo = typeof raw.content === "string" ? raw.content : JSON.stringify(raw.content);
+  const grezzo =
+    typeof raw.content === "string" ? raw.content : JSON.stringify(raw.content);
   // Ricontrollo esplicito con il nostro schema: comprende anche i .refine() (es. un evento per colore).
   const controllo = schema.safeParse(parsed);
-  if (!controllo.success) throw new RispostaNonValida(grezzo, controllo.error.issues);
+  if (!controllo.success)
+    throw new RispostaNonValida(grezzo, controllo.error.issues);
 
-  const usage = (raw as { usage_metadata?: { output_tokens?: number } }).usage_metadata;
-  return { analisi: controllo.data, tempi: { tokenRisposta: usage?.output_tokens } };
+  const usage = (raw as { usage_metadata?: { output_tokens?: number } })
+    .usage_metadata;
+  return {
+    analisi: controllo.data,
+    tempi: { tokenRisposta: usage?.output_tokens },
+  };
 }
 
 // --- Embedding ---
 
 // Alcuni modelli di embedding vogliono un prefisso diverso per i documenti e per le domande.
 const PREFISSI: Record<string, { documento: string; domanda: string }> = {
-  "nomic-embed-text": { documento: "search_document: ", domanda: "search_query: " },
+  "nomic-embed-text": {
+    documento: "search_document: ",
+    domanda: "search_query: ",
+  },
   "qwen3-embedding:0.6b": {
     documento: "",
-    domanda: "Instruct: Given a question about two pet budgies, retrieve the diary entries that answer it\nQuery: ",
+    domanda:
+      "Instruct: Given a question about two pet budgies, retrieve the diary entries that answer it\nQuery: ",
   },
 };
 
@@ -160,7 +198,9 @@ export async function embed(
   tipo: "documento" | "domanda",
   nomeModello = configLlm.embedding!,
 ): Promise<number[][]> {
-  const modello = await unaVolta(`embedding:${nomeModello}`, () => modelloEmbedding(nomeModello));
+  const modello = await unaVolta(`embedding:${nomeModello}`, () =>
+    modelloEmbedding(nomeModello),
+  );
   const prefisso = PREFISSI[nomeModello]?.[tipo] ?? "";
   const conPrefisso = testi.map((t) => prefisso + t);
   return tipo === "documento"
@@ -190,9 +230,15 @@ export function textForEmbedding(e: EventoUccellino, scena: string): string {
     `${nomeDaColore(e.colore)}, pappagallino ${e.colore}. Azione: ${e.azione.replace("_", " ")}.`,
     e.descrizione,
     `Posizione: ${e.posizione}.`,
-    e.con_cosa && e.con_cosa !== "niente" ? `Interagisce con: ${e.con_cosa}.` : "",
-    e.oggetti_vicini.length ? `Oggetti vicini: ${e.oggetti_vicini.join(", ")}.` : "",
+    e.con_cosa && e.con_cosa !== "niente"
+      ? `Interagisce con: ${e.con_cosa}.`
+      : "",
+    e.oggetti_vicini.length
+      ? `Oggetti vicini: ${e.oggetti_vicini.join(", ")}.`
+      : "",
     `Postura: ${e.postura}.`,
     `Scena: ${scena}`,
-  ].filter(Boolean).join(" ");
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
