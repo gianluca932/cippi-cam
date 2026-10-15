@@ -1,6 +1,6 @@
 {
   "name": "cippi-cam",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -22,6 +22,7 @@
     "carica": "tsx src/comandi/carica.ts",
     "build:lambda": "node scripts/build-lambda.mjs",
     "db:migra:aws": "LLM_PROVIDER=bedrock tsx src/comandi/migra-aws.ts",
+    "valuta-agente": "tsx src/comandi/valuta-agente.ts",
     "mcp:prova": "tsx src/comandi/mcp-prova.ts",
     "copia-correzioni": "DB_PROVIDER=rds LLM_PROVIDER=bedrock EMBED_MODEL=amazon.titan-embed-text-v2:0 tsx src/comandi/copia-correzioni.ts",
     "deploy:web": "node scripts/deploy-web.mjs"
@@ -40,6 +41,7 @@
     "exifr": "^7.1.3",
     "hono": "^4.13.13",
     "langchain": "^1.5.16",
+    "langsmith": "^0.10.13",
     "pg": "^8.23.1",
     "zod": "^4.1.0"
   },

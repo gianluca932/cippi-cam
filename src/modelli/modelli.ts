@@ -6,6 +6,7 @@ import {
   modelloVisione,
   unaVolta,
 } from "./llm.js";
+import { configSenzaImmagini } from "./tracce.js";
 import { z } from "zod";
 import { AnalisiFoto, AnalisiGabbia, type EventoUccellino } from "./schema.js";
 import { COLORI, nomeDaColore } from "../comune/uccellini.js";
@@ -159,7 +160,7 @@ async function guardaConLangChain<T>(
         },
       ],
     }),
-  ]);
+  ], configSenzaImmagini()); // su LangSmith la foto diventa "[immagine]" (vedi tracce.ts)
 
   const grezzo =
     typeof raw.content === "string" ? raw.content : JSON.stringify(raw.content);

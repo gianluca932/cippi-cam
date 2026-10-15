@@ -20,6 +20,7 @@ Il progetto è nato come esercizio pratico di AI engineering. L'obiettivo non er
   - [5. Registrazione live e coda di analisi](#5-registrazione-live-e-coda-di-analisi)
   - [6. Human-in-the-loop: correzioni dalla galleria](#6-human-in-the-loop-correzioni-dalla-galleria)
   - [7. Server MCP: il diario per qualunque modello](#7-server-mcp-il-diario-per-qualunque-modello)
+  - [8. Osservabilità e valutazione dell'agente con LangSmith](#8-osservabilità-e-valutazione-dellagente-con-langsmith)
 - [Valutazione: i numeri](#valutazione-i-numeri)
 - [Lezioni imparate](#lezioni-imparate)
 - [Stack](#stack)
@@ -251,6 +252,16 @@ claude mcp add cippi-cam -- ~/.nvm/versions/node/v20.20.2/bin/node \
 }
 ```
 
+### 8. Osservabilità e valutazione dell'agente con LangSmith
+
+Con `LANGSMITH_TRACING=true` nel `.env`, LangChain e LangGraph mandano a LangSmith (progetto `cippi-cam`) la traccia di ogni domanda: chiamate al modello, tool scelti con argomenti e risultati, token e tempi.
+
+- **Le foto restano a casa**: le chiamate di visione su Bedrock passano un tracer suo ([src/modelli/tracce.ts](src/modelli/tracce.ts)) che sostituisce le immagini base64 con `[immagine]`. Nella traccia restano prompt, risposta e token.
+- **`npm run valuta-agente`** è `valuta` per la chat. Le domande stanno in [eval/agente.json](eval/agente.json), versionato in git, e si sincronizzano nel dataset `cippi-cam-agente`. Ogni lancio è un **esperimento** su LangSmith (Datasets & Experiments), confrontabile con gli altri domanda per domanda.
+- **Valutatori in codice**, non un modello giudice: `tool_giusti` (ha chiamato i tool attesi?) e `risposta_giusta` (ci sono i numeri e gli orari attesi, e niente di quello che non deve dire?).
+
+Primo esperimento, con Qwen3 235B su Bedrock e il diario su RDS: **tool giusti 14/14, risposte giuste 12/14**. Le due risposte sbagliate dipendono da due tool, non dal modello (vedi CHANGELOG 0.17.0).
+
 ## Valutazione: i numeri
 
 Ogni modifica a prompt o modello si misura con [src/comandi/valuta.ts](src/comandi/valuta.ts) sulle foto etichettate a mano (dal file [eval/classificazione.json](eval/classificazione.json) e dalle correzioni in galleria).
@@ -362,6 +373,7 @@ Gli uccellini si configurano in [config/uccellini.json](config/uccellini.json):
 | `npm run embedding-immagini` | calcola l'impronta CLIP delle foto che non ce l'hanno |
 | `npm run valuta` | riclassifica le foto etichettate e misura l'accuratezza (`--foto NOME`, `--lato 1536`) |
 | `npm run valuta -- --salvate` | previsioni salvate contro le tue etichette (azioni, acqua, cibo), senza chiamare il modello |
+| `npm run valuta-agente` | misura l'agente sulle domande di `eval/agente.json` e crea un esperimento su LangSmith (le risposte attese valgono per il diario su RDS) |
 | `npm run confronta-embedding -- nomic-embed-text bge-m3` | confronta modelli di embedding su `eval/ricerca.json` |
 | `npm run db:up` / `db:migra` / `db:psql` | avvia Postgres, applica le migrazioni, apre la console SQL |
 | `npm run carica` | AWS: converte e carica su S3 le foto di `photos/`; l'analisi parte da sola |

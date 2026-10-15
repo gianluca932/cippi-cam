@@ -7,6 +7,30 @@ Le sezioni **Misurato** riportano i risultati di `npm run valuta` e `npm run con
 
 ---
 
+## [0.17.0] — 2026-10-16 · LangSmith: tracce dell'agente e valuta-agente
+
+### Aggiunto
+- **Tracce su LangSmith** (progetto `cippi-cam`): con `LANGSMITH_TRACING=true` nel `.env`, LangChain e LangGraph mandano ogni esecuzione dell'agente con chiamate al modello, tool, argomenti, risultati, token e tempi. Non serve codice: basta la configurazione.
+- **`npm run valuta-agente`** ([src/comandi/valuta-agente.ts](src/comandi/valuta-agente.ts)): `valuta` per la chat, come chiede la regola d'oro n. 2. Le 14 domande stanno in [eval/agente.json](eval/agente.json), versionato in git: conteggi, gabbia, momenti insieme, momenti precisi, ricerca per significato e due trabocchetti su un giorno senza dati. Il comando le sincronizza nel dataset `cippi-cam-agente` (si ricrea solo se il file cambia) e crea un esperimento su LangSmith.
+- **Valutatori in codice**: `tool_giusti` (sono stati chiamati i tool attesi? `a|b` = basta uno dei due) e `risposta_giusta` (espressioni regolari che la risposta deve contenere e non deve contenere). Sono deterministici e gratuiti; un giudice LLM può aggiungersi dopo, per quello che le regex non vedono.
+- `langsmith` tra le dipendenze dirette.
+
+### Modificato
+- **Le foto non finiscono nelle tracce**: le chiamate di visione su Bedrock passano un tracer suo ([src/modelli/tracce.ts](src/modelli/tracce.ts)) che sostituisce le immagini base64 con `[immagine]`. LangChain aggiunge il tracer dell'ambiente solo se la chiamata non ne ha già uno. Su Ollama la visione non passa da LangChain e non è tracciata.
+
+### Misurato
+- Primo esperimento, Qwen3 235B su Bedrock, diario su RDS: **tool giusti 14/14, risposte giuste 12/14**, 1-3 s a domanda. Le tre domande sbagliate prima della 0.14.0 (acqua e cibo insieme, giocare insieme, le 16:26) ora passano.
+- Le due risposte sbagliate dipendono da due **tool**, non dal modello:
+  - "quando era da rifornire l'acqua nel pomeriggio tardi?": il modello chiede `stato_gabbia` alle 18:00 e alle 20:00, e il tool risponde con l'ultimo controllo (16:43) **senza dire che dopo non ci sono dati**. Il modello allora scrive "alle 18:00 era ok", un'informazione inventata.
+  - "mentre Cippi mangiava, cosa faceva Sky?": `momenti_insieme` con `azione` vuol dire "lo fanno tutti e due", e la risposta è vuota. Manca un filtro "quando **uno** fa X".
+- Tracce della visione senza foto: verificato su LangSmith (1.800-4.600 caratteri a chiamata, `[immagine]` al posto del base64). Le previsioni non cambiano: la modifica tocca solo il tracing (provata su una foto con `valuta --foto`).
+
+### Problemi noti
+- La destinazione "agente" di LangSmith (`LANGSMITH_AGENT_ID` / `LANGSMITH_AGENT_ENVIRONMENT`) non funziona con LangChain: `@langchain/core` 1.2.17 manda sempre le esecuzioni a un progetto, e le due destinazioni insieme danno errore. Si usa `LANGSMITH_PROJECT`.
+- In alcuni controlli della gabbia `stato_gabbia` restituisce `cibo: null`: da capire insieme alla correzione del tool.
+- Le risposte attese di `eval/agente.json` valgono per il diario su RDS: il Postgres locale ha analisi diverse (qwen3.5:9b).
+- Sulla Lambda della chat il tracing non è ancora attivo.
+
 ## [0.16.0] — 2026-10-15 · MCP remoto su AWS con link unico
 
 ### Aggiunto

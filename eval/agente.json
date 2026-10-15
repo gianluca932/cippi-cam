@@ -1,0 +1,92 @@
+{
+  "nota": "Domande per npm run valuta-agente. Le risposte attese valgono per il diario su AWS (RDS) del 2026-10-14, con le correzioni copiate il 2026-10-15. tool: ogni voce deve essere chiamata; 'a|b' = basta uno dei due. deve_contenere / non_deve_contenere: espressioni regolari (maiuscole e minuscole uguali).",
+  "domande": [
+    {
+      "domanda": "Quante volte ha mangiato Sky il 14 ottobre 2026?",
+      "tool": ["conta_eventi|eventi_del_giorno"],
+      "deve_contenere": ["\\b(2|due)\\b", "16:35", "16:37"],
+      "tipo": "conteggio"
+    },
+    {
+      "domanda": "Quante volte ha giocato Cippi il 14 ottobre 2026?",
+      "tool": ["conta_eventi|eventi_del_giorno"],
+      "deve_contenere": ["\\b(6|sei)\\b"],
+      "tipo": "conteggio"
+    },
+    {
+      "domanda": "Quando ha volato Cippi il 14 ottobre 2026?",
+      "tool": ["conta_eventi|eventi_del_giorno"],
+      "deve_contenere": ["16:32"],
+      "tipo": "conteggio"
+    },
+    {
+      "domanda": "Sky ha dormito il 14 ottobre 2026? A che ora?",
+      "tool": ["conta_eventi|eventi_del_giorno"],
+      "deve_contenere": ["16:24"],
+      "tipo": "conteggio"
+    },
+    {
+      "domanda": "Il 14 ottobre 2026 c'è stato un momento in cui mancavano sia l'acqua sia il cibo?",
+      "tool": ["stato_gabbia|eventi_del_giorno"],
+      "deve_contenere": ["16:25"],
+      "tipo": "gabbia: era sbagliata prima della 0.14.0"
+    },
+    {
+      "domanda": "Il 14 ottobre 2026, quando era da rifornire l'acqua nel pomeriggio tardi?",
+      "tool": ["stato_gabbia|eventi_del_giorno"],
+      "deve_contenere": ["16:17", "16:26"],
+      "tipo": "gabbia"
+    },
+    {
+      "domanda": "A che ora è stato l'ultimo controllo della gabbia il 14 ottobre 2026?",
+      "tool": ["stato_gabbia"],
+      "deve_contenere": ["16:43"],
+      "tipo": "gabbia"
+    },
+    {
+      "domanda": "Cippi e Sky hanno giocato insieme il 14 ottobre 2026?",
+      "tool": ["momenti_insieme"],
+      "deve_contenere": ["15:23"],
+      "non_deve_contenere": ["\\bnon hanno (mai )?giocato insieme\\b"],
+      "tipo": "insieme: era sbagliata prima della 0.14.0"
+    },
+    {
+      "domanda": "Il 14 ottobre 2026, mentre Cippi mangiava, cosa faceva Sky?",
+      "tool": ["momenti_insieme"],
+      "deve_contenere": ["ripos", "pul"],
+      "tipo": "insieme"
+    },
+    {
+      "domanda": "Cosa facevano Cippi e Sky alle 16:26 del 14 ottobre 2026?",
+      "tool": ["eventi_del_giorno"],
+      "deve_contenere": ["gioc", "pul"],
+      "tipo": "momento preciso: era sbagliata prima della 0.14.0"
+    },
+    {
+      "domanda": "Cosa faceva Cippi alle 16:30 del 14 ottobre 2026?",
+      "tool": ["eventi_del_giorno"],
+      "deve_contenere": ["ripos"],
+      "tipo": "momento preciso"
+    },
+    {
+      "domanda": "Il 14 ottobre 2026 Sky è stato vicino alle sbarre della gabbia?",
+      "tool": ["cerca_momenti"],
+      "deve_contenere": ["16:(25|26|29|30)"],
+      "tipo": "ricerca per significato"
+    },
+    {
+      "domanda": "Cosa hanno fatto Cippi e Sky il 13 ottobre 2026?",
+      "tool": ["eventi_del_giorno|conta_eventi"],
+      "deve_contenere": ["nessun|non (ci sono|ho|risulta|sono|abbiamo)|niente"],
+      "non_deve_contenere": ["\\b\\d{1,2}:\\d{2}\\b"],
+      "tipo": "trabocchetto: giorno senza dati"
+    },
+    {
+      "domanda": "Quante volte ha mangiato Cippi il 13 ottobre 2026?",
+      "tool": ["conta_eventi|eventi_del_giorno"],
+      "deve_contenere": ["nessun|non (ci sono|ho|risulta|sono|ha)|zero|\\b0\\b|niente"],
+      "non_deve_contenere": ["\\b[1-9]\\d* volt"],
+      "tipo": "trabocchetto: giorno senza dati"
+    }
+  ]
+}
