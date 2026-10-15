@@ -7,6 +7,21 @@ Le sezioni **Misurato** riportano i risultati di `npm run valuta` e `npm run con
 
 ---
 
+## [0.15.0] — 2026-10-15 · Server MCP con i tool del diario
+
+### Aggiunto
+- **Server MCP** ([src/comandi/mcp.ts](src/comandi/mcp.ts)): i cinque tool dell'agente esposti con il Model Context Protocol su stdio, usabili da Claude Desktop, Claude Code o qualunque client MCP. I tool di LangChain hanno già nome, descrizione e schema Zod: il server li registra in un ciclo, quindi una modifica a un tool vale per la chat e per MCP. Tutti segnati `readOnlyHint`; gli errori tornano al modello come testo.
+- [src/comandi/mcp-avvio.ts](src/comandi/mcp-avvio.ts), importato per primo: manda i log su stderr (stdout è il canale del protocollo, una riga di log romperebbe il JSON-RPC) e sposta la cartella di lavoro nella radice del progetto, perché il client lo avvia da dove vuole.
+- `npm run mcp:prova` ([src/comandi/mcp-prova.ts](src/comandi/mcp-prova.ts)): un client MCP minimo che avvia il server, chiede `tools/list` e chiama due tool. Con `DB_PROVIDER=rds` lavora sul diario su AWS.
+- [.mcp.json](.mcp.json): Claude Code trova il server da solo aprendo il progetto. Nel README la configurazione per Claude Desktop, anche sul diario su AWS.
+
+### Misurato
+- Prove del protocollo, non del modello: `tools/list` restituisce i 5 tool, e `conta_eventi`, `stato_gabbia` e `momenti_insieme` danno gli stessi riassunti della chat, sia sul Postgres locale sia su RDS. Il server risponde anche avviato da `/` con l'ambiente vuoto, come lo avvia Claude Desktop.
+
+### Problemi noti
+- Il server gira sul Mac (stdio): da claude.ai sul web non si usa. Serve un MCP remoto su HTTP (prossima versione).
+- I tool considerano "oggi" la data corrente: sul diario su AWS c'è solo il 14 ottobre, quindi nelle domande va indicata la data.
+
 ## [0.14.0] — 2026-10-15 · Online su AWS con Terraform, Qwen su Bedrock e agente con gli orari
 
 ### Aggiunto

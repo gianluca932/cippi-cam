@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "cippi-cam": {
+      "command": "${HOME}/.nvm/versions/node/v20.20.2/bin/node",
+      "args": ["node_modules/tsx/dist/cli.mjs", "src/comandi/mcp.ts"]
+    }
+  }
+}

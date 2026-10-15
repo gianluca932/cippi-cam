@@ -19,6 +19,7 @@ Il progetto è nato come esercizio pratico di AI engineering. L'obiettivo non er
   - [4. Streaming con Server-Sent Events](#4-streaming-con-server-sent-events)
   - [5. Registrazione live e coda di analisi](#5-registrazione-live-e-coda-di-analisi)
   - [6. Human-in-the-loop: correzioni dalla galleria](#6-human-in-the-loop-correzioni-dalla-galleria)
+  - [7. Server MCP: il diario per qualunque modello](#7-server-mcp-il-diario-per-qualunque-modello)
 - [Valutazione: i numeri](#valutazione-i-numeri)
 - [Lezioni imparate](#lezioni-imparate)
 - [Stack](#stack)
@@ -217,6 +218,38 @@ ogni 60s:  scatta → photos/cam_….jpg ──► coda ──► lavoratore (un
 
 ---
 
+### 7. Server MCP: il diario per qualunque modello
+
+[src/comandi/mcp.ts](src/comandi/mcp.ts) espone i cinque tool dell'agente con il **Model Context Protocol**: Claude Desktop, Claude Code o qualunque client MCP può interrogare il diario con gli stessi strumenti della chat.
+
+- **Nessun codice duplicato**: i tool di LangChain hanno già nome, descrizione e schema Zod, il server li registra in un ciclo. Una modifica a un tool vale per la chat e per MCP.
+- **Il server non ragiona**: risponde a `tools/list` e a `tools/call`. Quale tool usare lo decide il modello del client, come Qwen nella chat. Così si può confrontare come due modelli diversi usano gli stessi strumenti.
+- **Trasporto stdio**: il client avvia il processo e gli parla in JSON-RPC su stdin/stdout. Per questo [mcp-avvio.ts](src/comandi/mcp-avvio.ts) manda tutti i log su stderr e sposta la cartella di lavoro nella radice del progetto (il client lo avvia da dove vuole).
+- `npm run mcp:prova` è un client minimo: avvia il server, elenca i tool e ne chiama due.
+
+Per collegarlo servono i percorsi assoluti di `node` e di `tsx` (con nvm il client non li trova nel PATH):
+
+**Claude Code** lo trova da solo: [.mcp.json](.mcp.json) nella radice del progetto lo dichiara con percorsi relativi (alla prima apertura chiede se fidarsi del server). In alternativa, da terminale:
+
+```bash
+claude mcp add cippi-cam -- ~/.nvm/versions/node/v20.20.2/bin/node \
+  /percorso/cippi-cam/node_modules/tsx/dist/cli.mjs /percorso/cippi-cam/src/comandi/mcp.ts
+```
+
+```jsonc
+// Claude Desktop: ~/Library/Application Support/Claude/claude_desktop_config.json
+{
+  "mcpServers": {
+    "cippi-cam": {
+      "command": "/Users/<utente>/.nvm/versions/node/v20.20.2/bin/node",
+      "args": ["/percorso/cippi-cam/node_modules/tsx/dist/cli.mjs", "/percorso/cippi-cam/src/comandi/mcp.ts"],
+      // Per il diario su AWS invece di Docker (il profilo AWS deve poter fare rds-db:connect):
+      "env": { "DB_PROVIDER": "rds", "LLM_PROVIDER": "bedrock", "EMBED_MODEL": "amazon.titan-embed-text-v2:0", "AWS_PROFILE": "cippi" }
+    }
+  }
+}
+```
+
 ## Valutazione: i numeri
 
 Ogni modifica a prompt o modello si misura con [src/comandi/valuta.ts](src/comandi/valuta.ts) sulle foto etichettate a mano (dal file [eval/classificazione.json](eval/classificazione.json) e dalle correzioni in galleria).
@@ -335,6 +368,7 @@ Gli uccellini si configurano in [config/uccellini.json](config/uccellini.json):
 | `npm run db:migra:aws` | AWS: schema, migrazioni, uccellini e utente `diario` su RDS (si può rilanciare) |
 | `npm run deploy:web` | AWS: compila il frontend online e lo pubblica su S3 + CloudFront |
 | `npm run copia-correzioni` | AWS: copia le correzioni della galleria dal Postgres locale a RDS |
+| `npm run mcp:prova` | prova il server MCP: lo avvia, elenca i tool e ne chiama due (con `DB_PROVIDER=rds` sul diario su AWS) |
 
 Variabili d'ambiente: vedi [.env.example](.env.example) (`LLM_PROVIDER`, `VISION_MODEL`, `AGENT_MODEL`, `EMBED_MODEL`, `OLLAMA_URL`, `AWS_REGION`, `DATABASE_URL`…). Si mettono in `.env` o si passano davanti al comando (`LLM_PROVIDER=bedrock npm run valuta`).
 
@@ -351,7 +385,8 @@ eval/                        etichette a mano e domande con risposta attesa, per
 scripts/dev.mjs              avvia Postgres, API e interfaccia insieme
 src/
   comandi/                   quello che si lancia con "npm run …": importa, scatta, classify, valuta,
-                             cerca, chiedi, confronta-embedding, embedding-immagini
+                             cerca, chiedi, confronta-embedding, embedding-immagini; carica, migra-aws,
+                             copia-correzioni (AWS); mcp (il server MCP) e mcp-prova
   server/                    l'API Hono (index.ts), la registrazione della pagina Live, gli scatti
   foto/                      dalla webcam al diario: webcam.ts (scattare), importazione.ts (una foto),
                              pipeline.ts (foto → visione → Zod → embedding)
