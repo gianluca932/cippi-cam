@@ -8,6 +8,13 @@ resource "random_password" "api" {
   special = false # niente caratteri che diano fastidio in un URL o in una shell
 }
 
+# Il "link unico" dell'MCP remoto (/api/mcp/<token>): i connettori di claude.ai non mandano la Basic Auth.
+# Chi ha l'URL può leggere il diario (i tool non scrivono). Per revocarlo: terraform apply -replace=random_password.mcp
+resource "random_password" "mcp" {
+  length  = 40
+  special = false
+}
+
 resource "aws_iam_role" "api" {
   name               = "${var.progetto}-api"
   assume_role_policy = data.aws_iam_policy_document.assume_lambda.json
@@ -40,7 +47,7 @@ resource "aws_lambda_function" "api" {
   memory_size      = 1024
   timeout          = 120 # una domanda all'agente può richiedere più giri modello ↔ tool
   environment {
-    variables = merge(local.env_comune, { API_PASSWORD = random_password.api.result })
+    variables = merge(local.env_comune, { API_PASSWORD = random_password.api.result, MCP_TOKEN = random_password.mcp.result })
   }
   depends_on = [aws_cloudwatch_log_group.api]
 }

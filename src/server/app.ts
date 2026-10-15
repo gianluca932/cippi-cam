@@ -1,4 +1,6 @@
+import { timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { basicAuth } from "hono/basic-auth";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
@@ -17,6 +19,7 @@ import {
 } from "../db/db.js";
 import { embed, textForEmbedding } from "../modelli/modelli.js";
 import { AZIONI, LIVELLI, type Azione } from "../modelli/schema.js";
+import { creaServerMcp } from "./mcp.js";
 
 // Le route comuni al server locale (index.ts) e alla Lambda su AWS (src/aws/api.ts):
 // diario, correzioni e chat. Cambiano solo da dove arrivano le foto e se serve una password.
@@ -26,13 +29,36 @@ export type OpzioniApp = {
   leggiFoto: (percorso: string) => Promise<Uint8Array | null>;
   /** Se c'è, tutta l'API chiede utente e password (Basic Auth): online ogni domanda costa chiamate a Bedrock. */
   password?: string;
+  /** Se c'è, il server MCP risponde su /api/mcp/<token> (MCP remoto, per i connettori di claude.ai). */
+  mcpToken?: string;
 };
 
-export function creaApp({ leggiFoto, password }: OpzioniApp) {
+export function creaApp({ leggiFoto, password, mcpToken }: OpzioniApp) {
   const app = new Hono().basePath("/api");
   // Il middleware va registrato prima delle route. Basic Auth la gestisce il browser da solo
   // (finestra di login, poi l'header su ogni richiesta, anche quelle in streaming).
-  if (password) app.use("*", basicAuth({ username: "cippi", password, realm: "Cippi Cam" }));
+  // /mcp/ fa eccezione: i connettori MCP non mandano la Basic Auth, lì vale il token nell'URL.
+  if (password) {
+    const auth = basicAuth({ username: "cippi", password, realm: "Cippi Cam" });
+    app.use("*", (c, next) => (c.req.path.startsWith("/api/mcp/") ? next() : auth(c, next)));
+  }
+
+  // MCP remoto (Streamable HTTP), con gli stessi tool del server su stdio (src/server/mcp.ts).
+  // Stateless: su Lambda ogni richiesta può finire su un'istanza diversa, quindi niente sessioni,
+  // e server e trasporto si creano a ogni richiesta (costa pochi millisecondi: i tool sono già caricati).
+  // Il "link unico" è la protezione: chi ha l'URL può leggere il diario (i tool non scrivono).
+  // Token sbagliato → 404, come se la route non esistesse; il confronto è in tempo costante.
+  app.all("/mcp/:token", async (c) => {
+    const token = Buffer.from(c.req.param("token"));
+    const atteso = Buffer.from(mcpToken ?? "");
+    if (!mcpToken || token.length !== atteso.length || !timingSafeEqual(token, atteso)) return c.notFound();
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      enableJsonResponse: true, // una risposta JSON invece di uno stream SSE: i tool rispondono in un colpo solo
+    });
+    await creaServerMcp().connect(transport);
+    return transport.handleRequest(c.req.raw);
+  });
 
   app.get("/uccellini", async (c) => c.json(await elencoUccellini()));
 

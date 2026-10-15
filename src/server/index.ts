@@ -14,7 +14,8 @@ import { CARTELLA_SCATTI, nomeValido, ultimiScatti } from "./scatti.js";
 // perché la webcam è attaccata al Mac.
 
 const PORT = Number(process.env.PORT ?? 3001);
-const app = creaApp({ leggiFoto: (percorso) => readFile(percorso).catch(() => null) });
+// MCP_TOKEN nel .env accende anche l'MCP remoto in locale: http://localhost:3001/api/mcp/<token>
+const app = creaApp({ leggiFoto: (percorso) => readFile(percorso).catch(() => null), mcpToken: process.env.MCP_TOKEN });
 
 // --- Live: gli scatti della webcam nella cartella photos/ ---
 

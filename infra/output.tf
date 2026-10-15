@@ -10,6 +10,12 @@ output "api_password" {
   sensitive = true # si legge con: terraform output -raw api_password
 }
 
+output "mcp_url" {
+  description = "L'MCP remoto, da aggiungere come connettore personalizzato in claude.ai"
+  value       = "https://${aws_cloudfront_distribution.sito.domain_name}/api/mcp/${random_password.mcp.result}"
+  sensitive   = true # si legge con: terraform output -raw mcp_url
+}
+
 output "env_mac" {
   description = "Da copiare nel .env. Senza DB_PROVIDER: il server locale resta su Docker; per usare RDS dal Mac si aggiunge DB_PROVIDER=rds al comando"
   value       = <<-ENV

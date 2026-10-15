@@ -10,12 +10,16 @@ import { scaricaFoto } from "../foto/s3.js";
 // La pagina Live qui non c'è: la webcam è attaccata al Mac.
 
 const env = z
-  .object({ API_PASSWORD: z.string().min(12, "API_PASSWORD deve avere almeno 12 caratteri") })
+  .object({
+    API_PASSWORD: z.string().min(12, "API_PASSWORD deve avere almeno 12 caratteri"),
+    MCP_TOKEN: z.string().min(32, "MCP_TOKEN deve avere almeno 32 caratteri").optional(),
+  })
   .parse(process.env);
 
 const app = creaApp({
   leggiFoto: async (percorso) => (await scaricaFoto(percorso))?.dati ?? null,
   password: env.API_PASSWORD,
+  mcpToken: env.MCP_TOKEN,
 });
 
 export const handler = streamHandle(app);

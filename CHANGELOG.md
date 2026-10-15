@@ -7,6 +7,23 @@ Le sezioni **Misurato** riportano i risultati di `npm run valuta` e `npm run con
 
 ---
 
+## [0.16.0] — 2026-10-15 · MCP remoto su AWS con link unico
+
+### Aggiunto
+- **MCP remoto** (Streamable HTTP) sulla route `/api/mcp/<token>` della Lambda dell'API, per i connettori personalizzati di claude.ai (web e telefono). *Stateless*: su Lambda ogni richiesta può arrivare a un'istanza diversa, quindi niente sessioni, e server e trasporto si creano a ogni richiesta. Risposte JSON invece di SSE, perché i tool rispondono in un colpo solo.
+- **Link unico** come protezione, una scelta da demo: un token di 40 caratteri generato da Terraform (`random_password.mcp`, output `mcp_url`) sta nell'URL. La route salta la Basic Auth (i connettori non la mandano), confronta il token in tempo costante e con un token sbagliato risponde 404. I tool sono in sola lettura. Per revocarlo: `terraform apply -replace=random_password.mcp`.
+- `npm run mcp:prova -- --url URL`: lo stesso client di prova, sul trasporto HTTP.
+- In locale l'MCP remoto si accende con `MCP_TOKEN` nel `.env`.
+
+### Modificato
+- La creazione del server MCP è passata in [src/server/mcp.ts](src/server/mcp.ts), usata sia da stdio ([src/comandi/mcp.ts](src/comandi/mcp.ts)) sia da HTTP ([app.ts](src/server/app.ts)).
+
+### Misurato
+- Su AWS: token sbagliato → 404; API e sito senza password → 401; con il link giusto `tools/list` restituisce i 5 tool, e `conta_eventi`, `stato_gabbia` e `cerca_momenti` (che chiama Titan dalla Lambda) rispondono con i dati di RDS. Client di prova completo in ~4,6 s, compreso l'avvio a freddo.
+
+### Problemi noti
+- Il link è l'unica protezione: chi lo ha può leggere il diario e far fare ricerche su Bedrock (frazioni di centesimo ciascuna). Per un uso non da demo servirebbe OAuth, l'autenticazione prevista da MCP.
+
 ## [0.15.0] — 2026-10-15 · Server MCP con i tool del diario
 
 ### Aggiunto

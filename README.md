@@ -225,7 +225,8 @@ ogni 60s:  scatta → photos/cam_….jpg ──► coda ──► lavoratore (un
 - **Nessun codice duplicato**: i tool di LangChain hanno già nome, descrizione e schema Zod, il server li registra in un ciclo. Una modifica a un tool vale per la chat e per MCP.
 - **Il server non ragiona**: risponde a `tools/list` e a `tools/call`. Quale tool usare lo decide il modello del client, come Qwen nella chat. Così si può confrontare come due modelli diversi usano gli stessi strumenti.
 - **Trasporto stdio**: il client avvia il processo e gli parla in JSON-RPC su stdin/stdout. Per questo [mcp-avvio.ts](src/comandi/mcp-avvio.ts) manda tutti i log su stderr e sposta la cartella di lavoro nella radice del progetto (il client lo avvia da dove vuole).
-- `npm run mcp:prova` è un client minimo: avvia il server, elenca i tool e ne chiama due.
+- `npm run mcp:prova` è un client minimo: avvia il server, elenca i tool e ne chiama due (`--url` per quello remoto).
+- **MCP remoto** (Streamable HTTP) su `/api/mcp/<token>` della Lambda dell'API, per i connettori di **claude.ai** (web e telefono). È *stateless*, perché su Lambda ogni richiesta può arrivare a un'istanza diversa. È protetto da un **link unico**: il token di 40 caratteri sta nell'URL (`terraform output -raw mcp_url`), un token sbagliato riceve 404 e i tool sono in sola lettura. Si aggiunge in claude.ai → Impostazioni → Connettori → *Aggiungi connettore personalizzato*; si revoca con `terraform apply -replace=random_password.mcp`.
 
 Per collegarlo servono i percorsi assoluti di `node` e di `tsx` (con nvm il client non li trova nel PATH):
 
