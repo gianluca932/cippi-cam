@@ -135,12 +135,14 @@ export async function chiediInStreaming(domanda: string, storia: TurnoChat[], on
 }
 
 // Carica una risorsa dell'API quando cambia il path.
-export function useApi<T>(path: string) {
+// path null = "non ancora": resta in caricamento senza chiamare l'API (serve quando il percorso dipende da un'altra risposta).
+export function useApi<T>(path: string | null) {
   const [state, setState] = useState<{ data?: T; error?: string; loading: boolean }>({ loading: true });
 
   useEffect(() => {
     let attivo = true;
     setState({ loading: true });
+    if (path === null) return;
     get<T>(path)
       .then((data) => attivo && setState({ data, loading: false }))
       .catch((e: Error) => attivo && setState({ error: e.message, loading: false }));

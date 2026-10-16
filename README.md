@@ -40,7 +40,7 @@ The project started as a hands-on AI engineering exercise. The goal was not a de
 
 | Page | What's there |
 |---|---|
-| **Today** | The day's photo gallery: for each bird the action, the object it interacts with and the confidence; water and food on the photos where the cage was checked. Next to it, the chat with the agent. |
+| **Today** | The day's photo gallery (or the latest day with photos, if there are none today): for each bird the action, the object it interacts with and the confidence; water and food on the photos where the cage was checked. Next to it, the chat with the agent. |
 | **Live** | The webcam stream, the **Start recording** button and the photos appearing one by one with their analysis status (queued → the model is looking → result). Local only. |
 | **Archive** | Past days with a summary of the actions, and each day's gallery. |
 | **Configuration** | Birds, models, database, storage and network, for the local and the AWS setup. |

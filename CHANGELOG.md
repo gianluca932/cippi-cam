@@ -7,6 +7,12 @@ The **Measured** sections report the results of `npm run valuta`, `npm run valut
 
 ---
 
+## [0.18.1] — 2026-10-16 · The first page shows the latest day with photos
+
+### Fixed
+- **The first page was empty online**: it only showed today's photos, and the diary on AWS stops at 14 October. Now, if there are no photos today, it shows the latest day that has some, titled "Latest day · Wednesday 14 October". The dates in the database stay the real ones (changing them would also break the agent evaluation, whose questions name 14 October).
+- `useApi` accepts `null` as the path ("not yet"), so the page asks for the photos only once it knows which day.
+
 ## [0.18.0] — 2026-10-16 · English interface, docs and agent answers
 
 ### Added
