@@ -1,12 +1,29 @@
 # Cippi Cam
 
+<p align="center">
+  <img src="docs/portal.gif" alt="The Cippi Cam portal: the day's gallery with each bird's action, the cage levels and the chat" width="100%">
+</p>
+
+<table>
+  <tr>
+    <td align="center" width="40%">
+      <img src="docs/chat-agent.gif" alt="The chat agent answering a question about Cippi and Sky, with the tools it called shown above the answer"><br>
+      <sub><b>The agent</b>: picks the tools, then answers word by word</sub>
+    </td>
+    <td align="center" width="60%">
+      <img src="docs/mcp-claude.png" alt="Claude using the Cippi Cam MCP server: a table of meals per bird and the cage status on 14 October"><br>
+      <sub><b>MCP</b>: Claude queries the same diary through the MCP server</sub>
+    </td>
+  </tr>
+</table>
+
 **An automatic diary of two budgies, Cippi and Sky, built with a vision model, structured output validated with Zod, Postgres + pgvector and a LangChain/LangGraph agent with tools. It runs locally with Ollama and moves to AWS (Bedrock, Lambda, RDS) by changing environment variables.**
 
 A webcam takes a photo every minute. A vision model looks at it and says what each bird is doing (eating, drinking, preening, playing, resting…) and, with a second prompt about every 20 minutes, how the cage is doing (water and food). The result is validated, stored in Postgres with an embedding for semantic search, and you can ask about it in a chat: *"how many times did Cippi eat today?"*, *"when was Sky hiding behind the perch?"*, *"is there enough water?"*. The same tools are also exposed as an **MCP server**, so Claude Desktop or claude.ai can query the diary too.
 
 The project started as a hands-on AI engineering exercise. The goal was not a demo that works once, but a **measurable** system: an evaluation set for the vision model and one for the agent, guardrails in code, and honest numbers on where it fails.
 
-> **About the language.** The interface, the agent's answers and this README are in English. The code (file names, identifiers, comments), the database values and the CHANGELOG are in Italian. See the [glossary](#glossary-italian-names-in-the-code).
+> **About the language.** The interface, the agent's answers and this README are in English. The code (file names, identifiers, comments), the prompts, the database values and the model's descriptions are in Italian; the CHANGELOG was translated to English in 0.18.0, while commit messages before that version are in Italian. See the [glossary](#glossary-italian-names-in-the-code).
 
 ---
 

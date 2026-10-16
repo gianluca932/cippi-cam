@@ -7,6 +7,14 @@ The **Measured** sections report the results of `npm run valuta`, `npm run valut
 
 ---
 
+## [0.18.2] — 2026-10-16 · README opens with the demo
+
+### Added
+- The README opens with the demo: a GIF of the portal, a GIF of the chat agent, and a screenshot of Claude answering through the MCP server. The files live in [docs/](docs/).
+
+### Fixed
+- The README's language note still said the CHANGELOG was in Italian.
+
 ## [0.18.1] — 2026-10-16 · The first page shows the latest day with photos
 
 ### Fixed
