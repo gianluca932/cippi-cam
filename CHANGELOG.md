@@ -7,6 +7,11 @@ The **Measured** sections report the results of `npm run valuta`, `npm run valut
 
 ---
 
+## [0.18.3] — 2026-10-16 · Tech stack at a glance in the README
+
+### Added
+- A **Tech stack** section right after the demo images: badges grouped by area (AI & agents, models, observability & evals, backend, data, frontend, AWS & IaC). The detailed Stack table further down stays. AWS badges have no logo: Simple Icons, which shields.io uses, no longer ships Amazon's marks.
+
 ## [0.18.2] — 2026-10-16 · README opens with the demo
 
 ### Added

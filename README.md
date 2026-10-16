@@ -17,6 +17,74 @@
   </tr>
 </table>
 
+## Tech stack
+
+<table>
+  <tr>
+    <td><b>AI &amp; agents</b></td>
+    <td>
+      <img alt="LangChain" src="https://img.shields.io/badge/LangChain-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white">
+      <img alt="LangGraph" src="https://img.shields.io/badge/LangGraph-1C3C3C?style=for-the-badge&logo=langgraph&logoColor=white">
+      <img alt="MCP" src="https://img.shields.io/badge/MCP-000000?style=for-the-badge&logo=modelcontextprotocol&logoColor=white">
+      <img alt="Zod" src="https://img.shields.io/badge/Zod-3E67B1?style=for-the-badge&logo=zod&logoColor=white">
+    </td>
+  </tr>
+  <tr>
+    <td><b>Models</b></td>
+    <td>
+      <img alt="Amazon Bedrock" src="https://img.shields.io/badge/Amazon%20Bedrock-01A88D?style=for-the-badge&logo=amazonwebservices&logoColor=white">
+      <img alt="Qwen3-VL · Qwen3" src="https://img.shields.io/badge/Qwen3--VL%20%C2%B7%20Qwen3-615CED?style=for-the-badge">
+      <img alt="Titan Embeddings" src="https://img.shields.io/badge/Titan%20Embeddings-FF9900?style=for-the-badge">
+      <img alt="Ollama" src="https://img.shields.io/badge/Ollama-000000?style=for-the-badge&logo=ollama&logoColor=white">
+      <img alt="CLIP" src="https://img.shields.io/badge/CLIP-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black">
+    </td>
+  </tr>
+  <tr>
+    <td><b>Observability &amp; evals</b></td>
+    <td>
+      <img alt="LangSmith" src="https://img.shields.io/badge/LangSmith-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white">
+      <img alt="Agent evals" src="https://img.shields.io/badge/Agent%20evals-4B5563?style=for-the-badge">
+      <img alt="Vision evals" src="https://img.shields.io/badge/Vision%20evals-4B5563?style=for-the-badge">
+    </td>
+  </tr>
+  <tr>
+    <td><b>Backend</b></td>
+    <td>
+      <img alt="Node.js" src="https://img.shields.io/badge/Node.js-5FA04E?style=for-the-badge&logo=nodedotjs&logoColor=white">
+      <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white">
+      <img alt="Hono" src="https://img.shields.io/badge/Hono-E36002?style=for-the-badge&logo=hono&logoColor=white">
+      <img alt="SSE" src="https://img.shields.io/badge/SSE-4B5563?style=for-the-badge">
+    </td>
+  </tr>
+  <tr>
+    <td><b>Data</b></td>
+    <td>
+      <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white">
+      <img alt="pgvector" src="https://img.shields.io/badge/pgvector-4169E1?style=for-the-badge">
+      <img alt="Docker" src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white">
+    </td>
+  </tr>
+  <tr>
+    <td><b>Frontend</b></td>
+    <td>
+      <img alt="React" src="https://img.shields.io/badge/React-61DAFB?style=for-the-badge&logo=react&logoColor=black">
+      <img alt="Vite" src="https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white">
+      <img alt="React Router" src="https://img.shields.io/badge/React%20Router-CA4245?style=for-the-badge&logo=reactrouter&logoColor=white">
+    </td>
+  </tr>
+  <tr>
+    <td><b>AWS &amp; IaC</b></td>
+    <td>
+      <img alt="Lambda" src="https://img.shields.io/badge/Lambda-FF9900?style=for-the-badge&logo=awslambda&logoColor=white">
+      <img alt="S3" src="https://img.shields.io/badge/S3-569A31?style=for-the-badge&logo=amazons3&logoColor=white">
+      <img alt="SQS" src="https://img.shields.io/badge/SQS-FF4F8B?style=for-the-badge&logo=amazonsqs&logoColor=white">
+      <img alt="RDS" src="https://img.shields.io/badge/RDS-527FFF?style=for-the-badge&logo=amazonrds&logoColor=white">
+      <img alt="CloudFront" src="https://img.shields.io/badge/CloudFront-8C4FFF?style=for-the-badge&logo=amazonwebservices&logoColor=white">
+      <img alt="Terraform" src="https://img.shields.io/badge/Terraform-844FBA?style=for-the-badge&logo=terraform&logoColor=white">
+    </td>
+  </tr>
+</table>
+
 **An automatic diary of two budgies, Cippi and Sky, built with a vision model, structured output validated with Zod, Postgres + pgvector and a LangChain/LangGraph agent with tools. It runs locally with Ollama and moves to AWS (Bedrock, Lambda, RDS) by changing environment variables.**
 
 A webcam takes a photo every minute. A vision model looks at it and says what each bird is doing (eating, drinking, preening, playing, resting…) and, with a second prompt about every 20 minutes, how the cage is doing (water and food). The result is validated, stored in Postgres with an embedding for semantic search, and you can ask about it in a chat: *"how many times did Cippi eat today?"*, *"when was Sky hiding behind the perch?"*, *"is there enough water?"*. The same tools are also exposed as an **MCP server**, so Claude Desktop or claude.ai can query the diary too.
@@ -29,6 +97,7 @@ The project started as a hands-on AI engineering exercise. The goal was not a de
 
 ## Contents
 
+- [Tech stack](#tech-stack)
 - [What it does](#what-it-does)
 - [Architecture](#architecture)
 - [Technical choices](#technical-choices)
