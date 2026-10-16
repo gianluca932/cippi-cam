@@ -7,6 +7,15 @@ The **Measured** sections report the results of `npm run valuta`, `npm run valut
 
 ---
 
+## [0.18.4] — 2026-10-16 · Remote MCP connects from claude.ai
+
+### Fixed
+- **A claude.ai custom connector "couldn't complete the configuration"**. Before connecting, clients look for an OAuth setup at `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`: those paths aren't under `/api`, so the site's Basic Auth answered 401 and the client concluded it needed a login it couldn't do. The CloudFront Function now answers 404 there ("no OAuth here"), and the client connects without authentication.
+- **A GET on the MCP link hung until the Lambda timed out**. A stateless server has no SSE stream to offer: the route now answers 405 (`Allow: POST`) to anything that isn't a POST.
+
+### Measured
+- On AWS, probing like claude.ai: `/.well-known/*` → 404; POST `initialize` → 200; GET → 405 in 0.1 s; site without password → 401; wrong token → 404; the test client lists the 5 tools and calls two.
+
 ## [0.18.3] — 2026-10-16 · Tech stack at a glance in the README
 
 ### Added

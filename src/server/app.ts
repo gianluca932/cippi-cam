@@ -52,6 +52,9 @@ export function creaApp({ leggiFoto, password, mcpToken }: OpzioniApp) {
     const token = Buffer.from(c.req.param("token"));
     const atteso = Buffer.from(mcpToken ?? "");
     if (!mcpToken || token.length !== atteso.length || !timingSafeEqual(token, atteso)) return c.notFound();
+    // Stateless: niente stream SSE in GET né sessioni da chiudere con DELETE. Senza questo 405 il trasporto
+    // teneva aperto il GET fino al timeout della Lambda, e i client (claude.ai) restavano ad aspettare.
+    if (c.req.method !== "POST") return c.body(null, 405, { Allow: "POST" });
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true, // una risposta JSON invece di uno stream SSE: i tool rispondono in un colpo solo

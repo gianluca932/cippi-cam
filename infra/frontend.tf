@@ -37,6 +37,11 @@ resource "aws_cloudfront_function" "spa" {
   code    = <<-JS
     function handler(event) {
       var req = event.request;
+      // I client MCP (claude.ai) cercano qui la configurazione OAuth prima di collegarsi. Il nostro MCP non usa
+      // OAuth (link unico): un 404 lo dice. Con il 401 della password il connettore non completava la configurazione.
+      if (req.uri.startsWith("/.well-known/")) {
+        return { statusCode: 404, statusDescription: "Not Found" };
+      }
       var auth = req.headers.authorization;
       if (!auth || auth.value !== "Basic ${base64encode("cippi:${random_password.api.result}")}") {
         return {
