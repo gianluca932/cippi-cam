@@ -4,6 +4,9 @@ import { configs, type Ambiente } from "../config";
 
 type Row = [label: string, value: string | number | undefined];
 
+// I colori in config/uccellini.json sono in italiano (li legge il codice): qui si mostrano in inglese.
+const COLORE: Record<string, string> = { giallo: "yellow", celeste: "light blue", verde: "green", bianco: "white", grigio: "grey", blu: "blue" };
+
 function Section({ title, rows }: { title: string; rows: Row[] }) {
   return (
     <div className="config-section">
@@ -14,7 +17,7 @@ function Section({ title, rows }: { title: string; rows: Row[] }) {
           .map(([label, value]) => (
             <div key={label} className="config-row">
               <dt>{label}</dt>
-              <dd className={value === "da definire" ? "tbd" : ""}>{value}</dd>
+              <dd className={value === "to be defined" ? "tbd" : ""}>{value}</dd>
             </div>
           ))}
       </dl>
@@ -29,11 +32,11 @@ export function Configurazione() {
   return (
     <section className="panel">
       <div className="config-head">
-        <h2>Configurazione</h2>
+        <h2>Configuration</h2>
         <div className="segmented" role="tablist">
           {(["locale", "aws"] as const).map((e) => (
             <button key={e} role="tab" aria-selected={env === e} onClick={() => setEnv(e)}>
-              {e === "locale" ? "💻 Locale" : "☁️ AWS"}
+              {e === "locale" ? "💻 Local" : "☁️ AWS"}
             </button>
           ))}
         </div>
@@ -41,50 +44,50 @@ export function Configurazione() {
 
       <div className="config-grid">
         <Section
-          title="Uccellini · config/uccellini.json"
-          rows={uccellini.map((u): Row => [u.nome, u.colore])}
+          title="Birds · config/uccellini.json"
+          rows={uccellini.map((u): Row => [u.nome, COLORE[u.colore] ?? u.colore])}
         />
         <Section
-          title="Modelli"
+          title="Models"
           rows={[
             ["Provider", c.modelli.provider],
             ["Endpoint", c.modelli.endpoint],
-            ["Visione (occhi)", c.modelli.visione],
-            ["Chat (agente)", c.modelli.chat],
+            ["Vision (eyes)", c.modelli.visione],
+            ["Chat (agent)", c.modelli.chat],
             ["Embedding", c.modelli.embedding],
-            ["Contesto (num_ctx)", c.modelli.contesto],
-            ["Soglia confidenza", c.modelli.sogliaConfidenza],
+            ["Context (num_ctx)", c.modelli.contesto],
+            ["Confidence threshold", c.modelli.sogliaConfidenza],
           ]}
         />
         <Section
           title="Database"
           rows={[
-            ["Tipo", c.database.tipo],
-            ["Connessione", c.database.connessione],
+            ["Type", c.database.tipo],
+            ["Connection", c.database.connessione],
           ]}
         />
         <Section
-          title="Storage foto"
+          title="Photo storage"
           rows={[
-            ["Tipo", c.storageFoto.tipo],
-            ["Percorso", c.storageFoto.percorso],
+            ["Type", c.storageFoto.tipo],
+            ["Path", c.storageFoto.percorso],
           ]}
         />
         <Section
-          title="Calcolo"
+          title="Compute"
           rows={[
-            ["Tipo", c.calcolo.tipo],
-            ["Dettagli", c.calcolo.dettagli],
+            ["Type", c.calcolo.tipo],
+            ["Details", c.calcolo.dettagli],
           ]}
         />
         <Section
-          title="Rete"
+          title="Network"
           rows={[
             ["Region", c.rete.region],
             ["VPC", c.rete.vpc],
             ["Subnet", c.rete.subnet],
             ["Security group", c.rete.securityGroup],
-            ["Accesso", c.rete.accesso],
+            ["Access", c.rete.accesso],
           ]}
         />
       </div>

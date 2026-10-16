@@ -7,9 +7,9 @@ export function Oggi() {
 
   return (
     <main className="layout">
-      {loading && <p className="muted">Carico il diario…</p>}
-      {error && <p className="errore">Non riesco a leggere il diario: {error}. Il server è acceso? (npm run server)</p>}
-      {data && <Gallery title="Oggi" foto={data} />}
+      {loading && <p className="muted">Loading the diary…</p>}
+      {error && <p className="errore">Can't read the diary: {error}. Is the server running? (npm run server)</p>}
+      {data && <Gallery title="Today" foto={data} />}
       <Chat />
     </main>
   );

@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { basename } from "node:path";
+import { parseArgs } from "node:util";
 import { Client } from "langsmith";
 import { evaluate, type EvaluationResult } from "langsmith/evaluation";
 import { z } from "zod";
@@ -13,13 +15,17 @@ import { c } from "../comune/terminale.js";
 // su LangSmith. Ogni lancio è un esperimento: su LangSmith si confrontano affiancati, con la traccia di ogni domanda.
 //
 // Uso: LLM_PROVIDER=bedrock AGENT_MODEL=… DB_PROVIDER=rds npm run valuta-agente
+//      npm run valuta-agente -- --file eval/agente-en.json   (le stesse domande in inglese)
 //      (le risposte attese valgono per il diario su RDS; serve LANGSMITH_API_KEY nel .env)
+// Il dataset su LangSmith prende il nome dal file: agente.json → cippi-cam-agente, agente-en.json → cippi-cam-agente-en.
 //
 // I valutatori sono codice, non un modello giudice: controllano cose verificabili.
 //   tool_giusti      → ha chiamato i tool attesi?
 //   risposta_giusta  → la risposta contiene i numeri e gli orari attesi, e niente di quello che non deve dire?
 
-const DATASET = "cippi-cam-agente";
+const { values } = parseArgs({ options: { file: { type: "string", default: "eval/agente.json" } } });
+const FILE = values.file;
+const DATASET = `cippi-cam-${basename(FILE, ".json")}`;
 
 const Domanda = z.object({
   domanda: z.string(),
@@ -30,7 +36,7 @@ const Domanda = z.object({
 });
 type Atteso = Omit<z.infer<typeof Domanda>, "domanda">;
 
-const file = readFileSync("eval/agente.json", "utf8");
+const file = readFileSync(FILE, "utf8");
 const { domande } = z.object({ domande: z.array(Domanda).min(1) }).parse(JSON.parse(file));
 
 // --- Il dataset su LangSmith: si ricrea solo se eval/agente.json è cambiato ---
@@ -39,7 +45,7 @@ const client = new Client();
 const impronta = createHash("sha256").update(file).digest("hex").slice(0, 12);
 
 async function sincronizzaDataset() {
-  const descrizione = `Domande per l'agente di Cippi Cam (da eval/agente.json, impronta ${impronta})`;
+  const descrizione = `Domande per l'agente di Cippi Cam (da ${FILE}, impronta ${impronta})`;
   const esiste = await client.hasDataset({ datasetName: DATASET });
   const dataset = esiste ? await client.readDataset({ datasetName: DATASET }) : await client.createDataset(DATASET, { description: descrizione });
   if (esiste && dataset.description === descrizione) return;
@@ -79,7 +85,7 @@ function rispostaGiusta({ outputs, referenceOutputs }: { outputs: Record<string,
 try {
   await sincronizzaDataset();
   const modello = `${configLlm.provider}:${configLlm.agente}`;
-  console.log(c.grigio(`Agente: ${modello} · database: ${process.env.DB_PROVIDER ?? "pg"} · ${domande.length} domande\n`));
+  console.log(c.grigio(`Agente: ${modello} · database: ${process.env.DB_PROVIDER ?? "pg"} · ${domande.length} domande (${FILE})\n`));
 
   const risultati = await evaluate(
     async ({ domanda }: { domanda: string }) => {

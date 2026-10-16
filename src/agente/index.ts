@@ -2,6 +2,7 @@ import { AIMessage, AIMessageChunk, createAgent, HumanMessage, ToolMessage, type
 import type { EventoChat, PassoTraccia } from "../comune/api-types.js";
 import { modelloChat } from "../modelli/llm.js";
 import { argomentiPuliti, ContestoAgente, guardrailRisposteInventate, promptDelGiorno } from "./middleware.js";
+import { linguaDi } from "./lingua.js";
 import { systemPrompt } from "./prompt.js";
 import { STRUMENTI } from "./strumenti.js";
 
@@ -63,7 +64,7 @@ export async function chiediAllAgente(
     {
       streamMode: ["messages", "updates"],
       recursionLimit: MAX_PASSI,
-      context: { segnala: (testo: string) => aggiungi({ tipo: "guardrail", testo }) },
+      context: { segnala: (testo: string) => aggiungi({ tipo: "guardrail", testo }), lingua: linguaDi(domanda) },
     },
   );
 

@@ -8,8 +8,8 @@ export function ArchivioGiorno() {
 
   return (
     <>
-      <Link to="/archivio" className="back">← Archivio</Link>
-      {loading && <p className="muted">Carico…</p>}
+      <Link to="/archivio" className="back">← Archive</Link>
+      {loading && <p className="muted">Loading…</p>}
       {error && <p className="errore">{error}</p>}
       {data && <Gallery title={formatDay(giorno)} foto={data} />}
     </>

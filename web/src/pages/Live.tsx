@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { avviaRegistrazione, EMOJI, fermaRegistrazione, formatOra, type ScattoApi, type StatoRegistrazione } from "../api";
+import { avviaRegistrazione, EMOJI, fermaRegistrazione, formatOra, nomeAzione, type ScattoApi, type StatoRegistrazione } from "../api";
 
 // Sopra: il video della webcam in diretta (getUserMedia, nel browser): è solo anteprima.
 // Gli scatti veri li fa il server (Avvia/Ferma qui sotto, o `npm run scatta`), che li analizza in coda.
@@ -46,7 +46,7 @@ function useWebcam() {
       } catch (e) {
         const err = e as DOMException;
         if (cameraId && err.name === "OverconstrainedError") setCameraId(""); // la fotocamera salvata non c'è più
-        else setErrore(err.name === "NotAllowedError" ? "Permesso per la fotocamera negato dal browser." : err.message);
+        else setErrore(err.name === "NotAllowedError" ? "The browser denied camera access." : err.message);
       }
     })();
     // Chiudere la pagina o cambiare fotocamera spegne quella di prima.
@@ -96,7 +96,7 @@ const durata = (ms: number) => {
 
 const fa = (ms: number) => {
   const s = Math.max(0, Math.round(ms / 1000));
-  return s < 60 ? `${s}s fa` : s < 3600 ? `${Math.floor(s / 60)} min fa` : `${Math.floor(s / 3600)} h fa`;
+  return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.floor(s / 60)} min ago` : `${Math.floor(s / 3600)} h ago`;
 };
 
 // Avvia/Ferma la registrazione sul server, con intervallo, durata e fotocamera.
@@ -124,7 +124,7 @@ function Controlli({ stato, onStato }: { stato?: StatoRegistrazione; onStato: (s
   return (
     <div className="live-controlli">
       <label>
-        Uno scatto ogni
+        One photo every
         <select value={ogniSec} onChange={(e) => setOgniSec(Number(e.target.value))} disabled={attiva}>
           {[30, 60, 120, 300].map((s) => (
             <option key={s} value={s}>{s < 60 ? `${s} s` : `${s / 60} min`}</option>
@@ -132,7 +132,7 @@ function Controlli({ stato, onStato }: { stato?: StatoRegistrazione; onStato: (s
         </select>
       </label>
       <label>
-        per
+        for
         <select value={durataMin} onChange={(e) => setDurataMin(Number(e.target.value))} disabled={attiva}>
           {[15, 30, 60, 120, 240, 480].map((m) => (
             <option key={m} value={m}>{m < 60 ? `${m} min` : `${m / 60} h`}</option>
@@ -140,7 +140,7 @@ function Controlli({ stato, onStato }: { stato?: StatoRegistrazione; onStato: (s
         </select>
       </label>
       <label>
-        con
+        with
         <select value={camera} onChange={(e) => setCamera(e.target.value)} disabled={attiva}>
           <option value="MacBook">MacBook</option>
           <option value="iPhone">iPhone</option>
@@ -148,10 +148,10 @@ function Controlli({ stato, onStato }: { stato?: StatoRegistrazione; onStato: (s
       </label>
       <label className="live-check">
         <input type="checkbox" checked={analizza} onChange={(e) => setAnalizza(e.target.checked)} disabled={attiva} />
-        analizza subito
+        analyse right away
       </label>
       <button type="button" className={`live-pulsante ${attiva ? "ferma" : ""}`} onClick={premi} disabled={inviando || !stato}>
-        {attiva ? "⏹ Ferma" : "● Avvia registrazione"}
+        {attiva ? "⏹ Stop" : "● Start recording"}
       </button>
       {errore && <span className="errore">{errore}</span>}
     </div>
@@ -188,14 +188,14 @@ export function Live() {
             <span className="live-punto" /> LIVE
           </span>
           <span className="chip-foto">
-            {new Date(adesso).toLocaleTimeString("it-IT")}
+            {new Date(adesso).toLocaleTimeString("en-GB")}
           </span>
         </div>
         {camere.length > 1 && (
-          <select className="live-camera" value={cameraId} onChange={(e) => scegli(e.target.value)} aria-label="Fotocamera">
-            <option value="">Fotocamera predefinita</option>
+          <select className="live-camera" value={cameraId} onChange={(e) => scegli(e.target.value)} aria-label="Camera">
+            <option value="">Default camera</option>
             {camere.map((c) => (
-              <option key={c.deviceId} value={c.deviceId}>{c.label || "Fotocamera"}</option>
+              <option key={c.deviceId} value={c.deviceId}>{c.label || "Camera"}</option>
             ))}
           </select>
         )}
@@ -205,46 +205,46 @@ export function Live() {
 
       <div className="live-stato">
         <span className={`rec ${registra ? "attivo" : ""}`}>
-          <span className="rec-punto" /> {registra ? "REC" : "In pausa"}
+          <span className="rec-punto" /> {registra ? "REC" : "Paused"}
         </span>
         {registra && registrazione?.avviataAlle && (
           <span className="rec-tempo">{durata(adesso - new Date(registrazione.avviataAlle).getTime())}</span>
         )}
         {registrazione && (registra || registrazione.scattate > 0) && (
           <span className="muted">
-            {registrazione.scattate} scatti · {registrazione.analizzate} analizzati
-            {registrazione.inAnalisi && " · 🔍 analisi in corso"}
-            {registrazione.coda.length > 0 && ` · ${registrazione.coda.length} in coda`}
+            {registrazione.scattate} photos · {registrazione.analizzate} analysed
+            {registrazione.inAnalisi && " · 🔍 analysing"}
+            {registrazione.coda.length > 0 && ` · ${registrazione.coda.length} queued`}
           </span>
         )}
-        {!registra && ultimo !== null && <span className="muted">Ultimo scatto {fa(adesso - ultimo)}</span>}
+        {!registra && ultimo !== null && <span className="muted">Last photo {fa(adesso - ultimo)}</span>}
         {registrazione?.errore && <span className="errore">{registrazione.errore}</span>}
-        <span className={`live-sse ${connesso ? "ok" : ""}`} title="Aggiornamenti in tempo reale (SSE)">
-          {connesso ? "● aggiornamenti attivi" : "○ riconnessione…"}
+        <span className={`live-sse ${connesso ? "ok" : ""}`} title="Real-time updates (SSE)">
+          {connesso ? "● live updates" : "○ reconnecting…"}
         </span>
       </div>
 
       <section className="panel">
-        <h2>Ultimi scatti</h2>
-        {scatti.length === 0 && <p className="muted">Ancora nessuno scatto in photos/.</p>}
+        <h2>Latest photos</h2>
+        {scatti.length === 0 && <p className="muted">No photos in photos/ yet.</p>}
         <div className="scatti">
           {scatti.map((s) => (
             <figure key={s.nome} className={`scatto ${nuovi.has(s.nome) ? "nuovo" : ""}`}>
-              <img src={`/api/scatti/${encodeURIComponent(s.nome)}/immagine`} alt={`Scatto delle ${formatOra(s.ora)}`} loading="lazy" />
+              <img src={`/api/scatti/${encodeURIComponent(s.nome)}/immagine`} alt={`Photo taken at ${formatOra(s.ora)}`} loading="lazy" />
               <span className="chip-foto ora">{formatOra(s.ora)}</span>
               <figcaption>
                 {s.analisi ? (
                   s.analisi.eventi.map((e) => (
                     <span key={e.nome}>
-                      <strong>{e.nome}</strong> {EMOJI[e.azione] ?? ""} {e.azione.replace("_", " ")}
+                      <strong>{e.nome}</strong> {EMOJI[e.azione] ?? ""} {nomeAzione(e.azione)}
                     </span>
                   ))
                 ) : s.nome === registrazione?.inAnalisi ? (
-                  <span className="in-analisi">🔍 il modello sta guardando…</span>
+                  <span className="in-analisi">🔍 the model is looking…</span>
                 ) : inCoda.has(s.nome) ? (
-                  <span className="muted">⏳ in coda</span>
+                  <span className="muted">⏳ queued</span>
                 ) : (
-                  <span className="muted">da analizzare</span>
+                  <span className="muted">not analysed yet</span>
                 )}
               </figcaption>
             </figure>

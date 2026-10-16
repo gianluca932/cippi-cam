@@ -8,18 +8,20 @@ import {
   EMOJI,
   formatOra,
   MIN_CONFIDENCE,
+  nomeAzione,
+  nomeLivello,
   type EventoApi,
   type FotoApi,
 } from "../api";
 
 const ALLARME = ["da_rifornire"];
-const etichetta = (azione: string) => `${EMOJI[azione] ?? ""} ${azione.replace("_", " ")}`;
+const etichetta = (azione: string) => `${EMOJI[azione] ?? ""} ${nomeAzione(azione)}`;
 
 function Livello({ icona, nome, valore }: { icona: string; nome: string; valore: string }) {
   const tipo = ALLARME.includes(valore) ? "allarme" : valore === "non_visibile" ? "spento" : "";
   return (
-    <span className={`chip-foto livello ${tipo}`} title={`${nome}: ${valore.replace("_", " ")}`}>
-      {icona} {valore === "non_visibile" ? "?" : valore.replace("_", " ")}
+    <span className={`chip-foto livello ${tipo}`} title={`${nome}: ${nomeLivello(valore)}`}>
+      {icona} {valore === "non_visibile" ? "?" : nomeLivello(valore)}
     </span>
   );
 }
@@ -27,8 +29,8 @@ function Livello({ icona, nome, valore }: { icona: string; nome: string; valore:
 // --- Gabbia: acqua e cibo ---
 
 const CAMPI_GABBIA = [
-  { chiave: "acqua", icona: "💧", nome: "acqua", valori: ["ok", "da_rifornire", "non_visibile"] },
-  { chiave: "cibo", icona: "🌾", nome: "cibo", valori: ["ok", "da_rifornire", "non_visibile"] },
+  { chiave: "acqua", icona: "💧", nome: "water", valori: ["ok", "da_rifornire", "non_visibile"] },
+  { chiave: "cibo", icona: "🌾", nome: "food", valori: ["ok", "da_rifornire", "non_visibile"] },
 ] as const;
 type CampoGabbia = (typeof CAMPI_GABBIA)[number]["chiave"];
 type ValoriGabbia = Partial<Record<CampoGabbia, string | null>>;
@@ -38,7 +40,7 @@ const modelloDi = (f: FotoApi, campo: CampoGabbia) =>
 const umanoDi = (f: FotoApi, campo: CampoGabbia) =>
   ({ acqua: f.acqua_umana, cibo: f.cibo_umano })[campo];
 
-const etichettaLivello = (v: string) => (v === "non_visibile" ? "non visto" : v.replace("_", " "));
+const etichettaLivello = nomeLivello;
 const ALLARMI_GABBIA = ["da_rifornire"];
 
 // La gabbia: una riga sola con due pillole (acqua, cibo), ognuna un menu compatto.
@@ -49,7 +51,7 @@ function RigaGabbia({ f, onCambia }: { f: FotoApi; onCambia: (valori: ValoriGabb
 
   return (
     <div className="riga-gabbia" title={f.note_gabbia ?? undefined}>
-      <span className="riga-nome">Gabbia</span>
+      <span className="riga-nome">Cage</span>
       <div className="gabbia-pillole">
         {CAMPI_GABBIA.map(({ chiave, icona, nome, valori }) => {
           const valore = f[chiave] ?? "non_visibile";
@@ -60,7 +62,7 @@ function RigaGabbia({ f, onCambia }: { f: FotoApi; onCambia: (valori: ValoriGabb
             <label
               key={chiave}
               className={`pillola ${allarme} ${verifica}`}
-              title={`${nome}${umano !== null ? ` · il modello diceva: ${etichettaLivello(modelloDi(f, chiave) ?? "?")}` : ""}`}
+              title={`${nome}${umano !== null ? ` · the model said: ${etichettaLivello(modelloDi(f, chiave) ?? "?")}` : ""}`}
             >
               <span aria-hidden>{icona}</span>
               <select value={valore} onChange={(ev) => onCambia({ [chiave]: ev.target.value })} aria-label={nome}>
@@ -76,7 +78,7 @@ function RigaGabbia({ f, onCambia }: { f: FotoApi; onCambia: (valori: ValoriGabb
         <button
           type="button"
           className="icona conferma"
-          title="È giusto: conferma acqua e cibo"
+          title="Correct: confirm water and food"
           onClick={() => onCambia(Object.fromEntries(CAMPI_GABBIA.map(({ chiave }) => [chiave, modelloDi(f, chiave) ?? "non_visibile"])))}
         >
           ✓
@@ -85,7 +87,7 @@ function RigaGabbia({ f, onCambia }: { f: FotoApi; onCambia: (valori: ValoriGabb
         <button
           type="button"
           className="icona"
-          title="Annulla: torna a quello che diceva il modello"
+          title="Undo: back to what the model said"
           onClick={() => onCambia({ acqua: null, cibo: null })}
         >
           ↺
@@ -106,9 +108,9 @@ function EtichetteFoto({ eventi }: { eventi: EventoApi[] }) {
       {eventi.map((e) => {
         const stato = statoDi(e);
         const titolo =
-          stato === "giusto" ? "Confermato: il modello aveva ragione"
-          : stato === "sbagliato" ? `Corretto: il modello diceva ${e.azione_modello.replace("_", " ")}`
-          : "Non ancora controllato";
+          stato === "giusto" ? "Confirmed: the model was right"
+          : stato === "sbagliato" ? `Corrected: the model said ${nomeAzione(e.azione_modello)}`
+          : "Not reviewed yet";
         return (
           <span key={e.id} className={`etichetta-foto ${stato}`} title={titolo}>
             {stato === "giusto" ? "✓" : stato === "sbagliato" ? "✗" : "•"} {e.nome}
@@ -139,7 +141,7 @@ function FotoGrande({ foto, onChiudi }: { foto: FotoApi | null; onChiudi: () => 
     >
       {foto && (
         <figure>
-          <button type="button" className="chiudi" onClick={onChiudi} aria-label="Chiudi">✕</button>
+          <button type="button" className="chiudi" onClick={onChiudi} aria-label="Close">✕</button>
           <img src={`/api/foto/${foto.id}/immagine`} alt={foto.scena} />
           <figcaption>
             <strong>{formatOra(foto.ora)}</strong> · {foto.scena}
@@ -152,7 +154,7 @@ function FotoGrande({ foto, onChiudi }: { foto: FotoApi | null; onChiudi: () => 
               ))}
               {foto.acqua && foto.cibo && (
                 <span className="muted">
-                  💧 {foto.acqua.replace("_", " ")} · 🌾 {foto.cibo.replace("_", " ")}
+                  💧 {nomeLivello(foto.acqua)} · 🌾 {nomeLivello(foto.cibo)}
                 </span>
               )}
             </div>
@@ -165,7 +167,7 @@ function FotoGrande({ foto, onChiudi }: { foto: FotoApi | null; onChiudi: () => 
               ))}
               {foto.note_gabbia && (
                 <div>
-                  <dt>Gabbia</dt>
+                  <dt>Cage</dt>
                   <dd>{foto.note_gabbia}</dd>
                 </div>
               )}
@@ -194,31 +196,31 @@ function RigaEvento({ e, onCambia }: { e: EventoApi; onCambia: (azione: string |
           className="chip-azione"
           value={e.azione}
           onChange={(ev) => onCambia(ev.target.value)}
-          aria-label={`Azione di ${e.nome}`}
+          aria-label={`${e.nome}'s action`}
         >
           {AZIONI.map((a) => (
             <option key={a} value={a}>{etichetta(a)}</option>
           ))}
         </select>
-        {e.con_cosa && e.con_cosa !== "niente" && <span className="con-cosa">con {e.con_cosa}</span>}
+        {e.con_cosa && e.con_cosa !== "niente" && <span className="con-cosa">with {e.con_cosa}</span>}
       </div>
       <div className="riga-azioni">
         {stato === "da-controllare" ? (
           <>
-            <span className="conf" title={`Il modello è sicuro al ${conf}%`}>
+            <span className="conf" title={`Model confidence: ${conf}%`}>
               <span className="conf-barra"><i style={{ width: `${conf}%` }} /></span>
               {conf}%
             </span>
-            <button type="button" className="icona conferma" onClick={() => onCambia(e.azione_modello)} title="È giusto: conferma">
+            <button type="button" className="icona conferma" onClick={() => onCambia(e.azione_modello)} title="Correct: confirm">
               ✓
             </button>
           </>
         ) : (
           <>
-            <span className="esito" title={stato === "sbagliato" ? `Il modello diceva: ${e.azione_modello}` : "Confermato"}>
-              {stato === "giusto" ? "giusto" : `era ${e.azione_modello.replace("_", " ")}`}
+            <span className="esito" title={stato === "sbagliato" ? `The model said: ${nomeAzione(e.azione_modello)}` : "Confirmed"}>
+              {stato === "giusto" ? "correct" : `was ${nomeAzione(e.azione_modello)}`}
             </span>
-            <button type="button" className="icona" onClick={() => onCambia(null)} title="Annulla: torna alla previsione del modello">
+            <button type="button" className="icona" onClick={() => onCambia(null)} title="Undo: back to the model's prediction">
               ↺
             </button>
           </>
@@ -251,7 +253,7 @@ export function Gallery({ title, foto }: { title: string; foto: FotoApi[] }) {
       else await correggiAzione(e.id, azione);
     } catch (err) {
       aggiornaEvento(e.id, () => prima); // la richiesta è fallita: si torna com'era
-      setErrore(`Correzione non salvata: ${(err as Error).message}`);
+      setErrore(`Correction not saved: ${(err as Error).message}`);
     }
   }
 
@@ -275,7 +277,7 @@ export function Gallery({ title, foto }: { title: string; foto: FotoApi[] }) {
       await correggiGabbia(f.id, valori);
     } catch (err) {
       setLocali((fs) => fs.map((ft) => (ft.id === f.id ? prima : ft))); // si torna com'era
-      setErrore(`Correzione della gabbia non salvata: ${(err as Error).message}`);
+      setErrore(`Cage correction not saved: ${(err as Error).message}`);
     }
   }
 
@@ -287,24 +289,24 @@ export function Gallery({ title, foto }: { title: string; foto: FotoApi[] }) {
       <div className="galleria-testa">
         <h2>{title}</h2>
         {totale > 0 && (
-          <span className="avanzamento" title="Eventi controllati da te">
+          <span className="avanzamento" title="Events you have reviewed">
             <span className="conf-barra"><i style={{ width: `${(controllati / totale) * 100}%` }} /></span>
-            {controllati}/{totale} controllati
+            {controllati}/{totale} reviewed
           </span>
         )}
       </div>
       {errore && <p className="errore">{errore}</p>}
-      {locali.length === 0 && <p className="muted">Nessuna foto. Mettile in photos/ e lancia npm run importa.</p>}
+      {locali.length === 0 && <p className="muted">No photos yet. Put them in photos/ and run npm run importa.</p>}
       <div className="grid">
         {locali.map((f) => (
           <article key={f.id} className="card">
-            <button type="button" className="foto-card" onClick={() => setAperta(f.id)} aria-label="Apri la foto in grande">
+            <button type="button" className="foto-card" onClick={() => setAperta(f.id)} aria-label="Open the photo">
               <img src={`/api/foto/${f.id}/immagine`} alt={f.scena} loading="lazy" />
               <span className="chip-foto ora">{formatOra(f.ora)}</span>
               {f.acqua && f.cibo && (
                 <span className="livelli-foto">
-                  <Livello icona="💧" nome="acqua" valore={f.acqua} />
-                  <Livello icona="🌾" nome="cibo" valore={f.cibo} />
+                  <Livello icona="💧" nome="water" valore={f.acqua} />
+                  <Livello icona="🌾" nome="food" valore={f.cibo} />
                 </span>
               )}
               <EtichetteFoto eventi={f.eventi} />

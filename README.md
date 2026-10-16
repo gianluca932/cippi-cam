@@ -1,101 +1,106 @@
 # Cippi Cam
 
-**Un diario automatico di due pappagallini, Cippi e Sky, costruito con un modello di visione, output strutturato validato con Zod, Postgres + pgvector e un agente LangChain/LangGraph con tool. Gira in locale con Ollama, e passa ad Amazon Bedrock cambiando una variabile d'ambiente.**
+**An automatic diary of two budgies, Cippi and Sky, built with a vision model, structured output validated with Zod, Postgres + pgvector and a LangChain/LangGraph agent with tools. It runs locally with Ollama and moves to AWS (Bedrock, Lambda, RDS) by changing environment variables.**
 
-Una webcam scatta una foto al minuto. Un modello di visione locale guarda la foto, dice cosa sta facendo ciascun uccellino (mangia, beve, si pulisce, gioca, riposa…) e, con un secondo prompt ogni 20 minuti circa, com'è la gabbia (acqua e cibo). Il risultato viene validato, salvato in Postgres con un embedding per la ricerca semantica, e si può interrogare in chat: *"quante volte ha mangiato Cippi oggi?"*, *"quando Sky era nascosto dietro il posatoio?"*, *"c'è abbastanza acqua?"*.
+A webcam takes a photo every minute. A vision model looks at it and says what each bird is doing (eating, drinking, preening, playing, resting…) and, with a second prompt about every 20 minutes, how the cage is doing (water and food). The result is validated, stored in Postgres with an embedding for semantic search, and you can ask about it in a chat: *"how many times did Cippi eat today?"*, *"when was Sky hiding behind the perch?"*, *"is there enough water?"*. The same tools are also exposed as an **MCP server**, so Claude Desktop or claude.ai can query the diary too.
 
-Il progetto è nato come esercizio pratico di AI engineering. L'obiettivo non era una demo che funziona una volta, ma un sistema **misurabile**: con un set di valutazione, guardrail nel codice e numeri onesti su dove sbaglia.
+The project started as a hands-on AI engineering exercise. The goal was not a demo that works once, but a **measurable** system: an evaluation set for the vision model and one for the agent, guardrails in code, and honest numbers on where it fails.
+
+> **About the language.** The interface, the agent's answers and this README are in English. The code (file names, identifiers, comments), the database values and the CHANGELOG are in Italian. See the [glossary](#glossary-italian-names-in-the-code).
 
 ---
 
-## Indice
+## Contents
 
-- [Cosa fa](#cosa-fa)
-- [Architettura](#architettura)
-- [Le scelte tecniche](#le-scelte-tecniche)
-  - [1. Visione con output strutturato](#1-visione-con-output-strutturato)
-  - [2. Il database: SQL e vettori nello stesso posto](#2-il-database-sql-e-vettori-nello-stesso-posto)
-  - [3. L'agente della chat](#3-lagente-della-chat)
-  - [4. Streaming con Server-Sent Events](#4-streaming-con-server-sent-events)
-  - [5. Registrazione live e coda di analisi](#5-registrazione-live-e-coda-di-analisi)
-  - [6. Human-in-the-loop: correzioni dalla galleria](#6-human-in-the-loop-correzioni-dalla-galleria)
-  - [7. Server MCP: il diario per qualunque modello](#7-server-mcp-il-diario-per-qualunque-modello)
-  - [8. Osservabilità e valutazione dell'agente con LangSmith](#8-osservabilità-e-valutazione-dellagente-con-langsmith)
-- [Valutazione: i numeri](#valutazione-i-numeri)
-- [Lezioni imparate](#lezioni-imparate)
+- [What it does](#what-it-does)
+- [Architecture](#architecture)
+- [Technical choices](#technical-choices)
+  - [1. Vision with structured output](#1-vision-with-structured-output)
+  - [2. The database: SQL and vectors in one place](#2-the-database-sql-and-vectors-in-one-place)
+  - [3. The chat agent](#3-the-chat-agent)
+  - [4. Streaming with Server-Sent Events](#4-streaming-with-server-sent-events)
+  - [5. Live recording and analysis queue](#5-live-recording-and-analysis-queue)
+  - [6. Human in the loop: corrections from the gallery](#6-human-in-the-loop-corrections-from-the-gallery)
+  - [7. MCP server: the diary for any model](#7-mcp-server-the-diary-for-any-model)
+  - [8. Agent observability and evaluation with LangSmith](#8-agent-observability-and-evaluation-with-langsmith)
+- [On AWS](#on-aws)
+- [Evaluation: the numbers](#evaluation-the-numbers)
+- [Lessons learned](#lessons-learned)
 - [Stack](#stack)
-- [Avvio](#avvio)
-- [Comandi](#comandi)
-- [Struttura del progetto](#struttura-del-progetto)
-- [Limiti noti](#limiti-noti)
-- [Su AWS](#su-aws)
+- [Getting started](#getting-started)
+- [Commands](#commands)
+- [Project structure](#project-structure)
+- [Glossary: Italian names in the code](#glossary-italian-names-in-the-code)
+- [Known limitations](#known-limitations)
+- [Next steps](#next-steps)
 
 ---
 
-## Cosa fa
+## What it does
 
-| Pagina | Cosa c'è |
+| Page | What's there |
 |---|---|
-| **Oggi** | Galleria delle foto del giorno: per ogni uccellino azione, oggetto con cui interagisce e confidenza; acqua e cibo della gabbia sulle foto in cui è stata controllata. Accanto, la chat con l'agente. |
-| **Live** | Il video della webcam in diretta, il pulsante **Avvia registrazione** e gli scatti che compaiono man mano, con lo stato dell'analisi (in coda → il modello sta guardando → risultato). |
-| **Archivio** | I giorni passati, con il riepilogo delle azioni, e la galleria di ciascun giorno. |
-| **Configurazione** | Uccellini, modelli, database, storage e rete, in versione locale e (in preparazione) AWS. |
+| **Today** | The day's photo gallery: for each bird the action, the object it interacts with and the confidence; water and food on the photos where the cage was checked. Next to it, the chat with the agent. |
+| **Live** | The webcam stream, the **Start recording** button and the photos appearing one by one with their analysis status (queued → the model is looking → result). Local only. |
+| **Archive** | Past days with a summary of the actions, and each day's gallery. |
+| **Configuration** | Birds, models, database, storage and network, for the local and the AWS setup. |
 
-Funzioni trasversali:
+Across the app:
 
-- **Correzione in galleria**: confermi ✓ o correggi l'azione di un uccellino. La previsione del modello resta salvata, la tua correzione diventa la verità per galleria e agente, e un'etichetta per la valutazione. Sulla foto, un'etichetta verde o rossa mostra se il modello aveva ragione.
-- **Chat in streaming**: mentre l'agente lavora vedi in grigio i passaggi (tool chiamati, dati ricevuti, eventuale ragionamento), poi la risposta che si scrive parola per parola.
-- **Foto grande** al click, con descrizioni e note sulla gabbia.
+- **Corrections in the gallery**: confirm ✓ or correct a bird's action. The model's prediction stays stored; your correction becomes the truth for the gallery and the agent, and a label for evaluation. A green or red tag on the photo shows whether the model was right.
+- **Streaming chat**: while the agent works you see its steps in grey (tools called, data received, reasoning if any), then the answer is written word by word.
+- **Large photo** on click, with descriptions and cage notes.
 
 ---
 
-## Architettura
+## Architecture
 
 ```mermaid
 flowchart LR
-    subgraph Acquisizione
-        W[Webcam] -->|imagesnap ogni 60s| F[photos/]
+    subgraph Capture
+        W[Webcam] -->|imagesnap every 60s| F[photos/]
         I[iPhone HEIC] --> F
     end
 
-    subgraph Analisi["Analisi (coda, una foto alla volta)"]
-        F --> C[sips: JPG 1024px<br/>+ ora di scatto EXIF]
-        C --> V[qwen3.5:9b<br/>visione]
-        V -->|JSON vincolato<br/>dallo schema| Z{Zod}
-        Z -->|valido| E[nomic-embed-text<br/>embedding]
-        Z -->|non valido| X[scartata]
+    subgraph Analysis["Analysis (queue, one photo at a time)"]
+        F --> C[sips: 1024px JPG<br/>+ EXIF capture time]
+        C --> V[vision model<br/>qwen3.5:9b · Qwen3-VL]
+        V -->|JSON constrained<br/>by the schema| Z{Zod}
+        Z -->|valid| E[text embedding]
+        Z -->|invalid| X[discarded]
     end
 
-    subgraph Dati["Postgres 17 + pgvector"]
-        E --> DB[(foto · eventi<br/>uccellini)]
-        DB --- VW[[vista eventi_effettivi]]
+    subgraph Data["Postgres 17 + pgvector"]
+        E --> DB[(photos · events<br/>birds)]
+        DB --- VW[[view eventi_effettivi]]
     end
 
     subgraph App
-        API[API Hono] --> VW
+        API[Hono API] --> VW
         API -->|SSE| WEB[React + Vite]
-        WEB -->|correzioni| API
-        AG[Agente<br/>4 tool] --> VW
+        WEB -->|corrections| API
+        AG[Agent<br/>5 tools] --> VW
         API --> AG
+        MCP[MCP server] --> AG
     end
 ```
 
-Il modello di visione e l'agente sono **lo stesso modello** (`qwen3.5:9b` in Ollama): con 16 GB di RAM conviene tenerne in memoria uno solo.
+Locally the vision model and the agent are **the same model** (`qwen3.5:9b` in Ollama): with 16 GB of RAM it's better to keep only one in memory. Online they are two Bedrock models (see [On AWS](#on-aws)).
 
 ---
 
-## Le scelte tecniche
+## Technical choices
 
-### 1. Visione con output strutturato
+### 1. Vision with structured output
 
-**Lo schema Zod è il contratto** tra il modello e il resto del codice ([src/modelli/schema.ts](src/modelli/schema.ts)):
+**The Zod schema is the contract** between the model and the rest of the code ([src/modelli/schema.ts](src/modelli/schema.ts)):
 
 ```ts
 export const EventoUccellino = z.object({
-  colore: z.enum(COLORI),                 // il modello dice il colore, non il nome
-  posizione: z.string().min(1).max(50),
-  postura: z.string().min(1).max(60),
-  con_cosa: z.string().min(1).max(30),    // "campanellino", "mangiatoia", "niente"
+  colore: z.enum(COLORI),                 // the model says the colour, not the name
+  posizione: z.string().min(1).max(50),   // position
+  postura: z.string().min(1).max(60),     // posture
+  con_cosa: z.string().min(1).max(30),    // what it interacts with: "bell", "feeder", "nothing"
   oggetti_vicini: z.array(z.string().max(25)).max(3),
   descrizione: z.string().min(1).max(120),
   azione: z.enum(AZIONI),                 // mangia | beve | dorme | si_pulisce | gioca | vola | riposa | non_visibile
@@ -103,248 +108,293 @@ export const EventoUccellino = z.object({
 });
 ```
 
-Lo stesso schema serve a tre cose:
+The same schema does three jobs:
 
-1. **Vincola il modello mentre genera.** `z.toJSONSchema()` diventa il parametro `format` di Ollama, che lo trasforma in una grammatica: a ogni token vengono scartati quelli che violerebbero lo schema. Il modello non *può* scrivere `"azione": "balla"`, né superare i `max()` di lunghezza.
-2. **Controlla la risposta dopo.** `safeParse` ricontrolla tutto, comprese le regole che nella grammatica non entrano (un `.refine()` vieta due uccellini con lo stesso colore).
-3. **Dà i tipi a TypeScript** senza riscriverli.
+1. **It constrains the model while it generates.** `z.toJSONSchema()` becomes Ollama's `format` parameter, which turns it into a grammar: at every step the tokens that would break the schema are discarded. The model *cannot* write `"azione": "dancing"`, nor exceed the `max()` lengths.
+2. **It checks the answer afterwards.** `safeParse` validates everything again, including rules that don't fit in a grammar (a `.refine()` forbids two birds with the same colour).
+3. **It gives TypeScript the types** without writing them twice.
 
-Tre dettagli che hanno fatto la differenza:
+Three details that made a difference:
 
-- **Il nome lo assegna il codice, non il modello.** Nelle prime versioni il modello vedeva bene i colori ma scambiava Cippi e Sky. Ora risponde solo `"giallo"` o `"celeste"`, e [config/uccellini.json](config/uccellini.json) traduce in nome in modo deterministico. Per aggiungere un uccellino basta una riga nel JSON.
-- **Prima osserva, poi classifica.** Con l'output strutturato i campi vengono generati nell'ordine dello schema, quindi posizione, postura, oggetto e descrizione vengono *prima* di azione e confidenza. Quello che il modello ha appena scritto entra nel contesto e orienta la scelta dell'azione.
-- **Limiti di lunghezza nella grammatica.** I `.max()` impediscono al modello di dilungarsi: circa il 14% di token in meno a foto, e quindi meno tempo, con la garanzia che non può sforare.
+- **The code assigns the name, not the model.** In the first versions the model saw the colours well but swapped Cippi and Sky. Now it only answers `"giallo"` (yellow) or `"celeste"` (light blue), and [config/uccellini.json](config/uccellini.json) maps colour to name deterministically. Adding a bird is one line of JSON.
+- **Observe first, then classify.** With structured output the fields are generated in schema order, so position, posture, object and description come *before* action and confidence. What the model has just written enters its context and steers the choice of action.
+- **Length limits in the grammar.** The `.max()` limits stop the model from rambling: about 14% fewer tokens per photo, so less time, with the guarantee that it can't overflow.
 
-### 2. Il database: SQL e vettori nello stesso posto
+### 2. The database: SQL and vectors in one place
 
-Postgres 17 con l'estensione **pgvector**, in Docker ([db/init.sql](db/init.sql), [db/migrazioni/](db/migrazioni/)):
+Postgres 17 with the **pgvector** extension, in Docker locally and on RDS online ([db/init.sql](db/init.sql), [db/migrazioni/](db/migrazioni/)):
 
 ```
-uccellini (nome, colore)
-foto      (id, ora, percorso, modello, scena, acqua, cibo, note_gabbia, embedding_immagine)
-eventi    (id, foto_id, uccellino, azione, confidenza, descrizione, posizione, postura,
-           con_cosa, oggetti_vicini, embedding_testo vector(768), azione_umana, controllato_il)
+uccellini (nome, colore)                                   birds
+foto      (id, ora, percorso, modello, scena, acqua, cibo,  photos
+           note_gabbia, embedding_immagine)
+eventi    (id, foto_id, uccellino, azione, confidenza,      one row per bird per photo
+           descrizione, posizione, postura, con_cosa, oggetti_vicini,
+           embedding_testo vector(768 | 1024), azione_umana, controllato_il)
 ```
 
-- **Una riga per uccellino per foto**, così le domande sono SQL normale (`COUNT`, `GROUP BY`, filtri per data e nome).
-- **`embedding_testo`** con indice HNSW per la ricerca semantica sulle descrizioni (*"vicino allo specchio"*, *"nascosto"*).
-- **`embedding_immagine`**: l'impronta CLIP di ogni foto (512 numeri, [src/modelli/immagini.ts](src/modelli/immagini.ts)), calcolata in ~30 ms durante l'import con transformers.js e un modello di Hugging Face. Serve a cercare direttamente nelle foto (`npm run cerca -- --immagini`), a trovare foto simili, ed è la base per un futuro classificatore.
-- **Ricerca ibrida**: similarità coseno di pgvector più filtri SQL nella stessa query (`WHERE uccellino = 'Sky' ORDER BY embedding <=> $1`).
-- **Vista `eventi_effettivi`**: definisce in un solo punto "qual è la verità" (la correzione umana se c'è, altrimenti il modello). Tutte le letture passano da lì.
-- **Episodi**: con una foto al minuto, "Cippi mangia per 5 minuti" sono 5 eventi ma **un** episodio. [src/agente/episodi.ts](src/agente/episodi.ts) unisce gli eventi consecutivi, così i conteggi hanno senso.
-- **Migrazioni rilanciabili** (`npm run db:migra`): ogni file in `db/migrazioni/` si può applicare più volte senza errori.
+- **One row per bird per photo**, so questions are plain SQL (`COUNT`, `GROUP BY`, filters on date and name).
+- **`embedding_testo`** with an HNSW index for semantic search over the descriptions (*"near the mirror"*, *"hiding"*): 768 dimensions with `nomic-embed-text` locally, 1024 with Titan on AWS.
+- **`embedding_immagine`**: the CLIP fingerprint of each photo (512 numbers, [src/modelli/immagini.ts](src/modelli/immagini.ts)), computed in ~30 ms at import with transformers.js and a Hugging Face model. It powers search directly in the photos (`npm run cerca -- --immagini`) and "similar photos". Local only.
+- **Hybrid search**: pgvector cosine similarity plus SQL filters in the same query (`WHERE uccellino = 'Sky' ORDER BY embedding <=> $1`).
+- **View `eventi_effettivi`**: defines in one place "what the truth is" (the human correction if there is one, otherwise the model). Every read goes through it.
+- **Episodes**: with one photo a minute, "Cippi eats for 5 minutes" is 5 events but **one** episode. [src/agente/episodi.ts](src/agente/episodi.ts) merges consecutive events, so the counts make sense.
+- **Re-runnable migrations** (`npm run db:migra`): every file in `db/migrazioni/` can be applied more than once without errors.
 
-Perché Postgres e non un vector DB dedicato: i dati sono soprattutto **strutturati** (azioni, orari, nomi), e servono sia filtri esatti sia similarità. Tenerli nella stessa tabella permette query ibride senza sincronizzare due sistemi. Su AWS diventa RDS, che supporta pgvector.
+Why Postgres and not a dedicated vector DB: the data is mostly **structured** (actions, times, names), and it needs both exact filters and similarity. Keeping them in the same table allows hybrid queries without syncing two systems.
 
-### 3. L'agente della chat
+### 3. The chat agent
 
-[src/agente/](src/agente/): un agente **LangChain** (`createAgent`) che gira su un grafo **LangGraph**. Il modello riceve la domanda e quattro tool, decide quali chiamare, legge i risultati e risponde.
+[src/agente/](src/agente/): a **LangChain** agent (`createAgent`) running on a **LangGraph** graph. The model gets the question and five tools, decides which to call, reads the results and answers in the language of the question.
 
 ```
             ┌──────────── middleware: wrapModelCall ────────────┐
-domanda ──► │ modello: risponde o chiama un tool?                │ ──tool──► wrapToolCall ──► tool ──┐
-            │  · promptDelGiorno: system prompt con la data      │                                    │
-            │  · guardrail: numeri senza tool → riprova ragionando│ ◄──────────── torna al modello ◄───┘
-            └────────────────────────────────────────────────────┘ ──risposta──► fine
+question ─► │ model: answer or call a tool?                      │ ──tool──► wrapToolCall ──► tool ──┐
+            │  · system prompt with today's date                 │                                    │
+            │  · guardrail: numbers without a tool → retry       │ ◄────────── back to the model ◄────┘
+            └────────────────────────────────────────────────────┘ ──answer──► done
 ```
 
-| File | Cosa contiene |
+| File | What it contains |
 |---|---|
-| [strumenti.ts](src/agente/strumenti.ts) | i 4 tool, definiti con `tool()` e uno schema Zod (l'equivalente del `@tool` di Python) |
-| [middleware.ts](src/agente/middleware.ts) | le regole agganciate al ciclo: prompt con la data, guardrail, pulizia degli argomenti |
-| [prompt.ts](src/agente/prompt.ts) | il system prompt |
-| [index.ts](src/agente/index.ts) | `createAgent` e la traduzione dello stream di LangGraph negli eventi della chat |
+| [strumenti.ts](src/agente/strumenti.ts) | the 5 tools, defined with `tool()` and a Zod schema (the equivalent of Python's `@tool`) |
+| [middleware.ts](src/agente/middleware.ts) | the rules hooked into the loop: prompt with the date, guardrail, argument clean-up |
+| [prompt.ts](src/agente/prompt.ts) | the system prompt |
+| [index.ts](src/agente/index.ts) | `createAgent` and the translation of the LangGraph stream into chat events |
 
-| Tool | Sotto | Per domande tipo |
+| Tool | Under the hood | For questions like |
 |---|---|---|
-| `eventi_del_giorno` | SQL + episodi | "cosa ha fatto Sky oggi?" |
-| `conta_eventi` | SQL + episodi | "quante volte ha mangiato Cippi?" |
-| `cerca_momenti` | pgvector + filtri SQL | "quando Sky era nascosto?" |
-| `stato_gabbia` | SQL, con riassunto già calcolato | "c'è abbastanza acqua?" |
+| `eventi_del_giorno` | SQL + episodes | "what did Sky do today?", "what was happening at 16:26?" |
+| `conta_eventi` | SQL + episodes | "how many times did Cippi eat?" |
+| `cerca_momenti` | pgvector + SQL filters | "when was Sky hiding?" |
+| `stato_gabbia` | SQL, with precomputed periods | "is there enough water?", "when was the food low?" |
+| `momenti_insieme` | overlap of the two birds' episodes | "did they play together?" |
 
-I guardrail stanno **nel codice, non solo nel prompt**:
+The guardrails live **in the code, not only in the prompt**:
 
-- **Argomenti dei tool validati con Zod** prima di toccare il database. Se il modello inventa un uccellino o passa una data sbagliata, riceve l'errore e si corregge (succede davvero, ed è nei log).
-- **Risposta con numeri senza aver usato un tool = scartata.** Il modello a volte risponde a memoria inventando orari. Un middleware `wrapModelCall` guarda la risposta e, se è sospetta, **ripete la stessa chiamata con il modello "ragionante"** (`think: true`), solo per quella domanda. La risposta scartata non entra mai nella conversazione. Se fallisce di nuovo, l'agente dice che non è riuscito a consultare il diario invece di inventare.
-- **Riassunti già calcolati** nei tool: un modello piccolo sbaglia se deve dedurre "l'acqua è sufficiente" da una lista di 30 valori, quindi il tool gli passa direttamente `ultimo_livello_visto`.
+- **Tool arguments validated with Zod** before touching the database. If the model invents a bird or passes a wrong date, it gets the error back and corrects itself (it really happens, and it's in the logs).
+- **An answer with numbers but no tool call = discarded.** Sometimes the model answers from memory and makes up times. A `wrapModelCall` middleware checks the answer and, if suspicious, **repeats the same call with the "reasoning" model**, only for that question. The discarded answer never enters the conversation. If it fails again, the agent says it couldn't look it up instead of inventing.
+- **Precomputed summaries** in the tools: a model gets it wrong if it has to infer "water was low from 16:17 to 16:26" from a list of 30 values, so the tool hands it the intervals directly. When the agent got questions wrong, the fix was almost always in the tool, not in the prompt.
 
-### Provider intercambiabili: Ollama o Bedrock
+#### Interchangeable providers: Ollama or Bedrock
 
-[src/modelli/llm.ts](src/modelli/llm.ts) è l'unico punto che sa quale provider stiamo usando. Il resto del codice chiede "il modello della chat", "il modello di visione", "gli embedding", e riceve oggetti LangChain con la stessa interfaccia:
+[src/modelli/llm.ts](src/modelli/llm.ts) is the only place that knows which provider is in use. The rest of the code asks for "the chat model", "the vision model", "the embeddings" and gets LangChain objects with the same interface:
 
 ```bash
-LLM_PROVIDER=ollama     # default: qwen3.5:9b + nomic-embed-text in locale
+LLM_PROVIDER=ollama     # default: qwen3.5:9b + nomic-embed-text locally
 LLM_PROVIDER=bedrock    # Amazon Bedrock: AWS_REGION, VISION_MODEL, AGENT_MODEL, EMBED_MODEL
 ```
 
-Le variabili stanno in `.env` (vedi [.env.example](.env.example)); le credenziali AWS le trova l'SDK (SSO, profilo, ruolo IAM), mai nel codice. Unico vincolo: **gli embedding di modelli diversi hanno dimensioni diverse** e non sono confrontabili, quindi cambiare `EMBED_MODEL` richiede una migrazione. All'avvio `controllaEmbedding()` confronta il modello con la colonna del database e si ferma con un messaggio chiaro, invece di salvare vettori incompatibili.
+Variables live in `.env` (see [.env.example](.env.example)); the AWS SDK finds the credentials (SSO, profile, IAM role), never the code. One constraint: **embeddings from different models have different sizes** and aren't comparable, so changing `EMBED_MODEL` needs a migration. At start-up `controllaEmbedding()` compares the model with the database column and stops with a clear message instead of storing incompatible vectors.
 
-**Un'eccezione misurata: la visione su Ollama non passa da LangChain.** `@langchain/ollama` (1.3.0) trasforma un messaggio "testo + immagine" in due messaggi separati, e per `qwen3.5:9b` è un input diverso: sulle stesse 32 etichette, 15 risposte giuste con un messaggio solo contro 8 con due. Quindi `classifyImage()` su Ollama manda la richiesta direttamente (testo e immagine insieme, `format` = schema Zod), mentre su Bedrock usa `withStructuredOutput`. L'agente invece resta tutto LangChain: misurato identico alla versione precedente.
+**One measured exception: vision on Ollama doesn't go through LangChain.** `@langchain/ollama` (1.3.0) turns a "text + image" message into two separate messages, and for `qwen3.5:9b` that's a different input: on the same 32 labels, 15 correct answers with one message against 8 with two. So `classifyImage()` on Ollama sends the request directly (text and image together, `format` = Zod schema), while on Bedrock it uses `withStructuredOutput`.
 
-### 4. Streaming con Server-Sent Events
+### 4. Streaming with Server-Sent Events
 
-La chat usa **SSE** su `POST /api/chat/stream` ([src/server/index.ts](src/server/index.ts)):
-
-```
-modello ──token──► LangGraph stream("messages" + "updates") ──► eventi della chat ──SSE──► browser
-```
-
-- I pezzi di **ragionamento** vanno subito al browser.
-- I pezzi di **risposta** vanno in streaming **solo dopo che è stato usato un tool**. Una risposta senza tool resta trattenuta finché il guardrail non l'ha controllata, così una risposta inventata non compare mai, nemmeno per un istante.
-- Lato React, ogni evento passa da un **reducer puro** (`applica(messaggio, evento)`) dentro un `setState` funzionale. È immutabile e quindi sicuro anche con la doppia invocazione di StrictMode.
-
-La pagina Live usa invece `EventSource` nativo su `GET /api/scatti/stream`, che si riconnette da solo se il server si riavvia.
-
-### 5. Registrazione live e coda di analisi
-
-[src/server/registrazione.ts](src/server/registrazione.ts): dalla pagina Live si avvia una registrazione che gira **sul server**, non nel browser (una scheda in background rallenterebbe i timer).
+The chat uses **SSE** on `POST /api/chat/stream` ([src/server/app.ts](src/server/app.ts)):
 
 ```
-ogni 60s:  scatta → photos/cam_….jpg ──► coda ──► lavoratore (una foto alla volta)
-                                                   converti → modello → Zod → embedding → DB
+model ──tokens──► LangGraph stream("messages" + "updates") ──► chat events ──SSE──► browser
 ```
 
-- **Lo scatto non aspetta mai l'analisi**: se il modello è lento, la coda si allunga e poi recupera.
-- `caffeinate` tiene sveglio il Mac, legato al processo del server.
-- Scatto, analisi e coda sono moduli separati ([src/foto/webcam.ts](src/foto/webcam.ts), [src/foto/importazione.ts](src/foto/importazione.ts)) che corrispondono uno a uno ai pezzi della versione AWS: S3, SQS, Lambda.
+- **Reasoning** chunks go to the browser right away.
+- **Answer** chunks are streamed **only after a tool has been used**. An answer without tools is held back until the guardrail has checked it, so a made-up answer never shows up, not even for an instant.
+- On the React side every event goes through a **pure reducer** (`applica(message, event)`) inside a functional `setState`. It's immutable, so it's safe even with StrictMode's double invocation.
+- Online, the API Lambda uses **response streaming**, so the answer arrives word by word there too.
 
-### 6. Human-in-the-loop: correzioni dalla galleria
+The Live page uses the native `EventSource` on `GET /api/scatti/stream`, which reconnects by itself if the server restarts.
 
-- La **previsione del modello non viene mai sovrascritta**: la correzione va in `azione_umana`, accanto.
-- **Confermare** conta quanto correggere: senza conferme il set di valutazione conterrebbe solo errori.
-- Correggere aggiorna subito galleria e agente (tramite la vista) e **ricalcola l'embedding**, il cui testo contiene l'azione.
-- Le correzioni diventano **etichette** per `npm run valuta`.
-- Lo stesso vale per **acqua e cibo** (`acqua_umana`, `cibo_umano`, vista `foto_effettive`), con due soli livelli legati a una decisione: `ok` / `da_rifornire` (+ `non_visibile`).
-- **La gabbia ha un prompt tutto suo** (`classifyGabbia` in `src/modelli/modelli.ts`), separato da quello delle azioni: le regole sul cibo nel prompt unico peggioravano le azioni. Non gira a ogni foto: ogni `GABBIA_OGNI_MIN` minuti (20), o dopo `GABBIA_RICONTROLLO_MIN` (5) se l'ultimo controllo diceva `da_rifornire`, così un avviso futuro parte solo su un problema confermato. Sulle altre foto acqua e cibo restano vuoti (`NULL`).
+### 5. Live recording and analysis queue
 
----
+[src/server/registrazione.ts](src/server/registrazione.ts): the Live page starts a recording that runs **on the server**, not in the browser (a background tab would slow down the timers).
 
-### 7. Server MCP: il diario per qualunque modello
-
-[src/comandi/mcp.ts](src/comandi/mcp.ts) espone i cinque tool dell'agente con il **Model Context Protocol**: Claude Desktop, Claude Code o qualunque client MCP può interrogare il diario con gli stessi strumenti della chat.
-
-- **Nessun codice duplicato**: i tool di LangChain hanno già nome, descrizione e schema Zod, il server li registra in un ciclo. Una modifica a un tool vale per la chat e per MCP.
-- **Il server non ragiona**: risponde a `tools/list` e a `tools/call`. Quale tool usare lo decide il modello del client, come Qwen nella chat. Così si può confrontare come due modelli diversi usano gli stessi strumenti.
-- **Trasporto stdio**: il client avvia il processo e gli parla in JSON-RPC su stdin/stdout. Per questo [mcp-avvio.ts](src/comandi/mcp-avvio.ts) manda tutti i log su stderr e sposta la cartella di lavoro nella radice del progetto (il client lo avvia da dove vuole).
-- `npm run mcp:prova` è un client minimo: avvia il server, elenca i tool e ne chiama due (`--url` per quello remoto).
-- **MCP remoto** (Streamable HTTP) su `/api/mcp/<token>` della Lambda dell'API, per i connettori di **claude.ai** (web e telefono). È *stateless*, perché su Lambda ogni richiesta può arrivare a un'istanza diversa. È protetto da un **link unico**: il token di 40 caratteri sta nell'URL (`terraform output -raw mcp_url`), un token sbagliato riceve 404 e i tool sono in sola lettura. Si aggiunge in claude.ai → Impostazioni → Connettori → *Aggiungi connettore personalizzato*; si revoca con `terraform apply -replace=random_password.mcp`.
-
-Per collegarlo servono i percorsi assoluti di `node` e di `tsx` (con nvm il client non li trova nel PATH):
-
-**Claude Code** lo trova da solo: [.mcp.json](.mcp.json) nella radice del progetto lo dichiara con percorsi relativi (alla prima apertura chiede se fidarsi del server). In alternativa, da terminale:
-
-```bash
-claude mcp add cippi-cam -- ~/.nvm/versions/node/v20.20.2/bin/node \
-  /percorso/cippi-cam/node_modules/tsx/dist/cli.mjs /percorso/cippi-cam/src/comandi/mcp.ts
 ```
+every 60s:  capture → photos/cam_….jpg ──► queue ──► worker (one photo at a time)
+                                                     convert → model → Zod → embedding → DB
+```
+
+- **Capturing never waits for the analysis**: if the model is slow, the queue grows and then catches up.
+- `caffeinate` keeps the Mac awake, tied to the server process.
+- Capture, analysis and queue are separate modules ([src/foto/webcam.ts](src/foto/webcam.ts), [src/foto/importazione.ts](src/foto/importazione.ts)) that map one to one onto the AWS version: S3, SQS, Lambda.
+
+### 6. Human in the loop: corrections from the gallery
+
+- The **model's prediction is never overwritten**: the correction goes into `azione_umana`, next to it.
+- **Confirming** counts as much as correcting: without confirmations the evaluation set would only contain errors.
+- A correction immediately updates the gallery and the agent (through the view) and **recomputes the embedding**, whose text contains the action.
+- Corrections become **labels** for `npm run valuta`.
+- The same goes for **water and food** (`acqua_umana`, `cibo_umano`, view `foto_effettive`), with only two levels tied to a decision: `ok` / `da_rifornire` (needs refill), plus `non_visibile`.
+- **The cage has its own prompt** (`classifyGabbia` in `src/modelli/modelli.ts`), separate from the actions one: food rules in a single prompt made the actions worse. It doesn't run on every photo: every `GABBIA_OGNI_MIN` minutes (20), or after `GABBIA_RICONTROLLO_MIN` (5) if the last check said `da_rifornire`, so a future alert only fires on a confirmed problem.
+
+### 7. MCP server: the diary for any model
+
+[src/server/mcp.ts](src/server/mcp.ts) exposes the agent's five tools through the **Model Context Protocol**: Claude Desktop, Claude Code, claude.ai or any MCP client can query the diary with the same tools as the chat.
+
+- **No duplicated code**: LangChain tools already have a name, a description and a Zod schema, so the server registers them in a loop. A change to a tool applies to both the chat and MCP.
+- **The server doesn't reason**: it answers `tools/list` and `tools/call`. Which tool to use is decided by the client's model, just like Qwen in the chat. So you can compare how two different models use the same tools.
+- **stdio transport** ([src/comandi/mcp.ts](src/comandi/mcp.ts)): the client starts the process and talks JSON-RPC over stdin/stdout. That's why [mcp-avvio.ts](src/comandi/mcp-avvio.ts) sends all logs to stderr and moves the working directory to the project root (the client starts it from anywhere).
+- **Remote MCP** (Streamable HTTP) on `/api/mcp/<token>` of the API Lambda, for **claude.ai** custom connectors (web and phone). It's *stateless*, because on Lambda each request can land on a different instance. It's protected by a **private link**: a 40-character token in the URL (`terraform output -raw mcp_url`), a wrong token gets a 404, and the tools are read-only. Revoke it with `terraform apply -replace=random_password.mcp`.
+- `npm run mcp:prova` is a minimal client: it starts the server, lists the tools and calls two of them (`--url` for the remote one).
+
+**Claude Code** finds it by itself: [.mcp.json](.mcp.json) in the project root declares it with relative paths (on first use it asks whether to trust the server). **Claude Desktop** needs absolute paths to `node` and `tsx` (with nvm they aren't on its PATH):
 
 ```jsonc
-// Claude Desktop: ~/Library/Application Support/Claude/claude_desktop_config.json
+// ~/Library/Application Support/Claude/claude_desktop_config.json
 {
   "mcpServers": {
     "cippi-cam": {
-      "command": "/Users/<utente>/.nvm/versions/node/v20.20.2/bin/node",
-      "args": ["/percorso/cippi-cam/node_modules/tsx/dist/cli.mjs", "/percorso/cippi-cam/src/comandi/mcp.ts"],
-      // Per il diario su AWS invece di Docker (il profilo AWS deve poter fare rds-db:connect):
+      "command": "/Users/<user>/.nvm/versions/node/v20.20.2/bin/node",
+      "args": ["/path/to/cippi-cam/node_modules/tsx/dist/cli.mjs", "/path/to/cippi-cam/src/comandi/mcp.ts"],
+      // For the diary on AWS instead of Docker (the AWS profile needs rds-db:connect):
       "env": { "DB_PROVIDER": "rds", "LLM_PROVIDER": "bedrock", "EMBED_MODEL": "amazon.titan-embed-text-v2:0", "AWS_PROFILE": "cippi" }
     }
   }
 }
 ```
 
-### 8. Osservabilità e valutazione dell'agente con LangSmith
+### 8. Agent observability and evaluation with LangSmith
 
-Con `LANGSMITH_TRACING=true` nel `.env`, LangChain e LangGraph mandano a LangSmith (progetto `cippi-cam`) la traccia di ogni domanda: chiamate al modello, tool scelti con argomenti e risultati, token e tempi.
+With `LANGSMITH_TRACING=true` in `.env`, LangChain and LangGraph send LangSmith (project `cippi-cam`) a trace of every question: model calls, chosen tools with arguments and results, tokens and timings.
 
-- **Le foto restano a casa**: le chiamate di visione su Bedrock passano un tracer suo ([src/modelli/tracce.ts](src/modelli/tracce.ts)) che sostituisce le immagini base64 con `[immagine]`. Nella traccia restano prompt, risposta e token.
-- **`npm run valuta-agente`** è `valuta` per la chat. Le domande stanno in [eval/agente.json](eval/agente.json), versionato in git, e si sincronizzano nel dataset `cippi-cam-agente`. Ogni lancio è un **esperimento** su LangSmith (Datasets & Experiments), confrontabile con gli altri domanda per domanda.
-- **Valutatori in codice**, non un modello giudice: `tool_giusti` (ha chiamato i tool attesi?) e `risposta_giusta` (ci sono i numeri e gli orari attesi, e niente di quello che non deve dire?).
-
-Primo esperimento, con Qwen3 235B su Bedrock e il diario su RDS: **tool giusti 14/14, risposte giuste 12/14**. Le due risposte sbagliate dipendono da due tool, non dal modello (vedi CHANGELOG 0.17.0).
-
-## Valutazione: i numeri
-
-Ogni modifica a prompt o modello si misura con [src/comandi/valuta.ts](src/comandi/valuta.ts) sulle foto etichettate a mano (dal file [eval/classificazione.json](eval/classificazione.json) e dalle correzioni in galleria).
-
-**Previsioni salvate contro le etichette** (`npm run valuta -- --salvate`, 22 etichette):
-
-| | Risultato |
-|---|---|
-| Accuratezza complessiva | **68%** (15/22) |
-| "riposa" riconosciuto | 75% (12/16) |
-| "mangia" riconosciuto | 50% (3/6) |
-| Con confidenza ≥ 0.6 | 71% giusti |
-
-**Esperimenti sul classificatore** (stesso set di 12 foto e 24 etichette):
-
-| Variante | Accuratezza | Token a foto | Note |
-|---|---|---|---|
-| Prompt con indizi visivi (testa, becco) | **63%** | 424 | riferimento |
-| Prompt con campi brevi + esempi | 38% | 363 | il modello **copia gli esempi** del prompt (vedi sotto) |
-| `qwen3-vl:8b` al posto di `qwen3.5:9b` | peggiore | ~4000 | loop di ripetizione, ~8× più lento |
-| Risoluzione 1536px invece di 1024px | invariata | — | più lento, nessun guadagno |
-
-**Modelli di embedding** sulla ricerca semantica ([eval/ricerca.json](eval/ricerca.json), `npm run confronta-embedding`):
-
-| Modello | hit@1 | MRR | Tempo |
-|---|---|---|---|
-| **nomic-embed-text** (scelto) | 3/4 | 0.88 | 0.2s |
-| bge-m3 | 3/4 | 0.88 | 1.5–7s |
-| qwen3-embedding:0.6b | 2/4 | 0.75 | 5.5s |
-
-**Agente** (`qwen3.5:9b`, 5 domande di prova): tool corretto 5/5, nessuna risposta inventata mostrata. Circa 10–20 secondi per le domande dirette, circa 45 secondi quando il guardrail fa riprovare con il ragionamento.
+- **The photos stay home**: vision calls on Bedrock use their own tracer ([src/modelli/tracce.ts](src/modelli/tracce.ts)) that replaces base64 images with `[immagine]`. Prompt, answer and tokens stay in the trace.
+- **`npm run valuta-agente`** is `valuta` for the chat. The questions live in [eval/agente.json](eval/agente.json) (Italian) and [eval/agente-en.json](eval/agente-en.json) (English), versioned in git, and are synced to LangSmith datasets. Every run is an **experiment** (Datasets & Experiments), comparable with the others question by question.
+- **Evaluators in code**, not an LLM judge: `tool_giusti` (did it call the expected tools?) and `risposta_giusta` (does the answer contain the expected numbers and times, and nothing it shouldn't say?). Deterministic and free.
 
 ---
 
-## Lezioni imparate
+## On AWS
 
-- **La confidenza dichiarata dal modello non è affidabile.** Ha detto "Sky non visibile" con 0.95, e Sky c'era. La confidenza è un numero che il modello *scrive*, non una probabilità.
-- **Un esempio nel prompt diventa una risposta.** Mettere "becco tra le piume dell'ala" come esempio di postura ha fatto crollare l'accuratezza dal 63% al 38%: il modello lo copiava anche quando non c'entrava, e la postura copiata lo spingeva verso "si pulisce".
-- **Il prompt di un modello piccolo è fragile.** Aggiungere *una* regola ("non usare markdown") ha fatto smettere l'agente di usare i tool: inventava orari. Da lì la scelta di mettere le difese nel codice (validazione, rifiuto delle risposte senza tool) e di gestire il markdown nell'interfaccia.
-- **I modelli "thinking" vanno scelti con attenzione.** `qwen3:4b` ha il ragionamento sempre acceso: circa 600 token per decidere di chiamare un tool, quindi 45–110 secondi a domanda. Come agente funziona meglio un modello in cui il ragionamento si spegne, e si accende solo quando serve.
-- **Le foto contano più del modello.** Uccellini dietro le sbarre, con la testa coperta dalla mangiatoia, sono ambigui anche per un umano. Avvicinare la webcam ha migliorato i risultati più di qualsiasi modifica al prompt.
-- **Misurare prima di cambiare.** Senza `valuta` il prompt "migliorato" sarebbe finito in produzione con metà dell'accuratezza.
+Since 0.14.0 the diary also runs online (region `eu-south-1`, Milan), with the infrastructure in Terraform ([infra/](infra/)). No EC2: compute is all Lambda, and the only always-on piece is the database.
+
+```mermaid
+flowchart LR
+    MAC[Mac: npm run carica] -->|JPG + capture time| S3[(S3)]
+    S3 -->|ObjectCreated| SQS[SQS + DLQ]
+    SQS --> L[Lambda<br/>analizza-foto]
+    L --> BR[Bedrock<br/>Qwen3-VL + Titan]
+    L --> RDS[(RDS Postgres 17<br/>+ pgvector)]
+    CF[CloudFront<br/>+ password] --> WEB[S3: frontend]
+    CF -->|/api| API[Lambda API<br/>Hono, streaming, MCP]
+    API --> RDS
+    API --> BR
+```
+
+| Local | AWS |
+|---|---|
+| `photos/` folder | S3 (photos are uploaded by `npm run carica`: the webcam stays on the Mac) |
+| in-memory queue | SQS, 3 attempts then a dead letter queue |
+| `importaFoto()` | `importaJpg()` inside the `analizza-foto` Lambda |
+| Ollama (`qwen3.5:9b`, `nomic-embed-text`) | Bedrock: Qwen3-VL 235B (vision), Qwen3 235B (chat), Titan v2 (embeddings, 1024 dims) |
+| Postgres in Docker | RDS Postgres `db.t4g.micro`: SSL and IAM-token login, no password for the app |
+| Hono server | the same `app.ts` in a Lambda with a Function URL and response streaming |
+
+Choices worth knowing:
+
+- **Lambdas outside the VPC.** Inside, they'd need a NAT Gateway (~35 $/month) to reach Bedrock and S3. RDS is therefore reachable on 5432, but getting in requires SSL and a signed IAM token: the `diario` user has no password.
+- **RDS instead of Aurora Serverless.** Aurora would pause by itself, but on the AWS free plan it can only be created in "express configuration", which Terraform doesn't support yet.
+- **Models chosen by measuring** (`valuta`), not by default: see the numbers below.
+- **Fixed cost** ~4 $/month (RDS public IPv4 + the master secret); Lambda, S3, SQS and CloudFront stay within the free tier at this traffic; Bedrock is pay-per-token (~0.002 $ per analysed photo).
+
+The reasoning behind each choice is in the comments of the `.tf` files and in the [CHANGELOG](CHANGELOG.md) for 0.14.0.
+
+---
+
+## Evaluation: the numbers
+
+Every change to a prompt, a tool or a model is measured before and after.
+
+**Vision models** (`npm run valuta`, 57 labelled photos, same prompt):
+
+| | qwen3.5:9b local | **Qwen3-VL 235B** (Bedrock) | Nova 2 Lite (Bedrock) |
+|---|---|---|---|
+| actions (101 labels) | 65% | **56%** | 50% |
+| water (36) | 56%* | 39% | 39% |
+| food (31) | 90% | **94%** | 74% |
+| time per photo | ~40 s | ~4 s | ~3 s |
+
+\* measured on 27 water labels. Water is the weak spot for every model: the errors are almost symmetric, which points at the framing of the photo more than at the model.
+
+**Agent** (`npm run valuta-agente`, 14 questions in Italian and the same 14 in English, Qwen3 235B on Bedrock, diary on RDS), 1–3 s per question:
+
+| | right tools | right answers |
+|---|---|---|
+| Italian | 14/14 | 13/14 |
+| English | 13/14 | 14/14 |
+
+The three questions it got wrong before 0.14.0 (water and food low together, playing together, "at 16:26") now pass. The remaining failures come from two tools, not from the model (see CHANGELOG 0.17.0). The answer language is decided in code: with the rule only in the prompt, English questions about an empty day got Italian answers (see CHANGELOG 0.18.0).
+
+**Earlier experiments on the local classifier** (12 photos, 24 labels):
+
+| Variant | Accuracy | Tokens per photo | Notes |
+|---|---|---|---|
+| Prompt with visual cues (head, beak) | **63%** | 424 | baseline |
+| Prompt with short fields + examples | 38% | 363 | the model **copies the examples** (see below) |
+| `qwen3-vl:8b` instead of `qwen3.5:9b` | worse | ~4000 | repetition loops, ~8× slower |
+| 1536px instead of 1024px | unchanged | — | slower, no gain |
+
+**Embedding models** for semantic search ([eval/ricerca.json](eval/ricerca.json), `npm run confronta-embedding`):
+
+| Model | hit@1 | MRR | Time |
+|---|---|---|---|
+| **nomic-embed-text** (chosen) | 3/4 | 0.88 | 0.2s |
+| bge-m3 | 3/4 | 0.88 | 1.5–7s |
+| qwen3-embedding:0.6b | 2/4 | 0.75 | 5.5s |
+
+---
+
+## Lessons learned
+
+- **The model's stated confidence isn't reliable.** It said "Sky not visible" with 0.95, and Sky was there. Confidence is a number the model *writes*, not a probability.
+- **An example in the prompt becomes an answer.** Using "beak in the wing feathers" as a posture example dropped accuracy from 63% to 38%: the model copied it even when it didn't fit, and the copied posture pushed it towards "preening".
+- **A small model's prompt is fragile.** Adding *one* rule ("don't use markdown") made the agent stop using tools: it invented times. Hence the choice to put the defences in code (validation, rejecting answers without tools) and handle markdown in the interface.
+- **When the agent is wrong, look at the tools first.** Answers like "water and food were never low together" came from a tool that returned counts instead of time periods. Giving the tool the right summary fixed it; a longer prompt wouldn't have.
+- **"Thinking" models need care.** `qwen3:4b` always reasons: ~600 tokens to decide to call a tool, so 45–110 seconds per question. An agent works better with a model whose reasoning can be switched off and on only when needed.
+- **The photos matter more than the model.** Birds behind the bars, with the head hidden by the feeder, are ambiguous even for a human. Moving the webcam closer improved results more than any prompt change.
+- **Measure before changing.** Without `valuta` the "improved" prompt would have shipped with half the accuracy.
 
 ---
 
 ## Stack
 
-| Livello | Tecnologia |
+| Layer | Technology |
 |---|---|
-| Modelli | [Ollama](https://ollama.com) · `qwen3.5:9b` (visione + agente) · `nomic-embed-text` (embedding) · Amazon Bedrock via env |
-| Orchestrazione | [LangChain.js](https://js.langchain.com) (`createAgent`, `tool`, middleware, `withStructuredOutput`) · [LangGraph.js](https://langchain-ai.github.io/langgraphjs/) |
-| Validazione | [Zod 4](https://zod.dev): schema → JSON Schema → grammatica del modello |
-| Database | Postgres 17 + [pgvector](https://github.com/pgvector/pgvector) (HNSW) in Docker |
-| Backend | Node 20 · TypeScript · [Hono](https://hono.dev) · SSE |
+| Models | [Ollama](https://ollama.com) · `qwen3.5:9b` · `nomic-embed-text` locally; Amazon Bedrock · Qwen3-VL 235B · Qwen3 235B · Titan v2 online |
+| Orchestration | [LangChain.js](https://js.langchain.com) (`createAgent`, `tool`, middleware, `withStructuredOutput`) · [LangGraph.js](https://langchain-ai.github.io/langgraphjs/) |
+| Tools for other models | [Model Context Protocol](https://modelcontextprotocol.io) (stdio and Streamable HTTP) |
+| Observability and evals | [LangSmith](https://smith.langchain.com) |
+| Validation | [Zod 4](https://zod.dev): schema → JSON Schema → model grammar |
+| Database | Postgres 17 + [pgvector](https://github.com/pgvector/pgvector) (HNSW), Docker locally, RDS online |
+| Backend | Node · TypeScript · [Hono](https://hono.dev) · SSE |
 | Frontend | React 19 · Vite · React Router 7 |
-| Acquisizione | `imagesnap` (webcam) · `sips` (HEIC → JPG) · `exifr` (ora di scatto) |
+| Cloud | AWS (S3, SQS, Lambda, Bedrock, RDS, CloudFront) with [Terraform](https://www.terraform.io) |
+| Capture | `imagesnap` (webcam) · `sips` (HEIC → JPG) · `exifr` (capture time) |
 
 ---
 
-## Avvio
+## Getting started
 
-Requisiti: macOS (per `imagesnap`, `sips`, `caffeinate`), Node 20+, Docker, [Ollama](https://ollama.com).
+Requirements: macOS (for `imagesnap`, `sips`, `caffeinate`), Node 20+, Docker, [Ollama](https://ollama.com).
 
 ```bash
-# dipendenze
+# dependencies
 npm install && (cd web && npm install)
 brew install imagesnap
 
-# modelli
+# models
 ollama pull qwen3.5:9b
 ollama pull nomic-embed-text
 
-# database (la prima volta)
+# database (first time)
 npm run db:up        # Postgres 17 + pgvector
-npm run db:migra     # applica db/migrazioni/ (si può rilanciare)
+npm run db:migra     # applies db/migrazioni/ (re-runnable)
 
-# tutto insieme: Postgres + API + interfaccia
+# everything together: Postgres + API + interface
 npm run dev
 ```
 
-`npm run dev` ([scripts/dev.mjs](scripts/dev.mjs)) accende Postgres se è spento, avvia API e interfaccia con l'output prefissato (`[api]`, `[web]`) e con **Ctrl+C** ferma tutto. Poi apri **http://localhost:5173**.
+`npm run dev` ([scripts/dev.mjs](scripts/dev.mjs)) starts Postgres if it's off, runs the API and the interface with prefixed output (`[api]`, `[web]`), and **Ctrl+C** stops everything. Then open **http://localhost:5173**.
 
-Gli uccellini si configurano in [config/uccellini.json](config/uccellini.json):
+The birds are configured in [config/uccellini.json](config/uccellini.json):
 
 ```json
 [
@@ -355,110 +405,103 @@ Gli uccellini si configurano in [config/uccellini.json](config/uccellini.json):
 
 ---
 
-## Comandi
+## Commands
 
-| Comando | Cosa fa |
+| Command | What it does |
 |---|---|
-| `npm run dev` | Postgres + API + interfaccia insieme; Ctrl+C ferma tutto |
-| `npm run server` | solo l'API su `localhost:3001/api` (in watch: per registrazioni lunghe usa `npx tsx src/server/index.ts`) |
-| `cd web && npm run dev` | solo l'interfaccia su `localhost:5173` |
-| `npm run importa` | converte le foto nuove di `photos/` (anche HEIC), legge l'ora di scatto, classifica e salva |
-| `npm run importa -- photos/X.HEIC` | importa solo i file indicati (anche `--lista lista.txt`, una foto per riga) |
-| `npm run scatta -- --ogni 60 --durata 60` | foto dalla webcam in `photos/` (lo stesso si fa dalla pagina Live) |
-| `npm run classify -- data/foto/X.jpg --dry-run` | analizza una foto senza salvarla |
-| `npm run chiedi -- "quante volte ha mangiato Cippi?"` | chiede all'agente da terminale, con la traccia dei tool |
-| `npm run cerca -- "Sky nascosto"` | ricerca semantica nelle descrizioni |
-| `npm run cerca -- --immagini "two budgies near the feeder"` | ricerca direttamente nelle foto (CLIP, in inglese) |
-| `npm run cerca -- --simili 12` | le foto più simili alla foto #12 |
-| `npm run embedding-immagini` | calcola l'impronta CLIP delle foto che non ce l'hanno |
-| `npm run valuta` | riclassifica le foto etichettate e misura l'accuratezza (`--foto NOME`, `--lato 1536`) |
-| `npm run valuta -- --salvate` | previsioni salvate contro le tue etichette (azioni, acqua, cibo), senza chiamare il modello |
-| `npm run valuta-agente` | misura l'agente sulle domande di `eval/agente.json` e crea un esperimento su LangSmith (le risposte attese valgono per il diario su RDS) |
-| `npm run confronta-embedding -- nomic-embed-text bge-m3` | confronta modelli di embedding su `eval/ricerca.json` |
-| `npm run db:up` / `db:migra` / `db:psql` | avvia Postgres, applica le migrazioni, apre la console SQL |
-| `npm run carica` | AWS: converte e carica su S3 le foto di `photos/`; l'analisi parte da sola |
-| `npm run build:lambda` | AWS: impacchetta le Lambda in `infra/build/` (prima di `terraform plan`) |
-| `npm run db:migra:aws` | AWS: schema, migrazioni, uccellini e utente `diario` su RDS (si può rilanciare) |
-| `npm run deploy:web` | AWS: compila il frontend online e lo pubblica su S3 + CloudFront |
-| `npm run copia-correzioni` | AWS: copia le correzioni della galleria dal Postgres locale a RDS |
-| `npm run mcp:prova` | prova il server MCP: lo avvia, elenca i tool e ne chiama due (con `DB_PROVIDER=rds` sul diario su AWS) |
+| `npm run dev` | Postgres + API + interface together; Ctrl+C stops everything |
+| `npm run server` | API only on `localhost:3001/api` (in watch mode: for long recordings use `npx tsx src/server/index.ts`) |
+| `cd web && npm run dev` | interface only on `localhost:5173` |
+| `npm run importa` | converts new photos in `photos/` (HEIC too), reads the capture time, classifies and saves |
+| `npm run importa -- photos/X.HEIC` | imports only the given files (also `--lista list.txt`, one photo per line) |
+| `npm run scatta -- --ogni 60 --durata 60` | webcam photos into `photos/` (same as the Live page) |
+| `npm run classify -- data/foto/X.jpg --dry-run` | analyses one photo without saving it |
+| `npm run chiedi -- "how many times did Cippi eat?"` | asks the agent from the terminal, with the tool trace |
+| `npm run cerca -- "Sky hiding"` | semantic search over the descriptions |
+| `npm run cerca -- --immagini "two budgies near the feeder"` | searches the photos directly (CLIP, in English) |
+| `npm run cerca -- --simili 12` | the photos most similar to photo #12 |
+| `npm run embedding-immagini` | computes the CLIP fingerprint for photos that don't have one |
+| `npm run valuta` | re-classifies the labelled photos and measures accuracy (`--foto NAME`, `--lato 1536`) |
+| `npm run valuta -- --salvate` | saved predictions against your labels (actions, water, food), without calling the model |
+| `npm run valuta-agente` | measures the agent on `eval/agente.json` (`--file eval/agente-en.json` for English) and creates a LangSmith experiment |
+| `npm run confronta-embedding -- nomic-embed-text bge-m3` | compares embedding models on `eval/ricerca.json` |
+| `npm run db:up` / `db:migra` / `db:psql` | starts Postgres, applies the migrations, opens the SQL console |
+| `npm run carica` | AWS: converts and uploads the photos in `photos/` to S3; the analysis starts by itself |
+| `npm run build:lambda` | AWS: bundles the Lambdas into `infra/build/` (before `terraform plan`) |
+| `npm run db:migra:aws` | AWS: schema, migrations, birds and the `diario` user on RDS (re-runnable) |
+| `npm run deploy:web` | AWS: builds the online frontend and publishes it to S3 + CloudFront |
+| `npm run copia-correzioni` | AWS: copies the gallery corrections from local Postgres to RDS |
+| `npm run mcp:prova` | tests the MCP server: starts it, lists the tools and calls two (`--url` for the remote one) |
 
-Variabili d'ambiente: vedi [.env.example](.env.example) (`LLM_PROVIDER`, `VISION_MODEL`, `AGENT_MODEL`, `EMBED_MODEL`, `OLLAMA_URL`, `AWS_REGION`, `DATABASE_URL`…). Si mettono in `.env` o si passano davanti al comando (`LLM_PROVIDER=bedrock npm run valuta`).
+Environment variables: see [.env.example](.env.example) (`LLM_PROVIDER`, `VISION_MODEL`, `AGENT_MODEL`, `EMBED_MODEL`, `DB_PROVIDER`, `AWS_REGION`, `LANGSMITH_*`…). Put them in `.env` or in front of the command (`LLM_PROVIDER=bedrock npm run valuta`).
 
 ---
 
-## Struttura del progetto
+## Project structure
 
 ```
-config/uccellini.json        chi vive nella gabbia (nome ↔ colore)
+config/uccellini.json        who lives in the cage (name ↔ colour)
 db/
-  init.sql                   schema iniziale
-  migrazioni/                correzioni umane, dettagli, indice delle immagini, livelli della gabbia
-eval/                        etichette a mano e domande con risposta attesa, per le misure
-scripts/dev.mjs              avvia Postgres, API e interfaccia insieme
+  init.sql                   initial schema
+  migrazioni/                human corrections, details, image index, cage levels
+eval/                        hand labels and questions with expected answers, for the measurements
+infra/                       Terraform: network, RDS, S3, SQS, Lambda, CloudFront
+scripts/                     dev.mjs (local start-up), build-lambda.mjs, deploy-web.mjs
 src/
-  comandi/                   quello che si lancia con "npm run …": importa, scatta, classify, valuta,
-                             cerca, chiedi, confronta-embedding, embedding-immagini; carica, migra-aws,
-                             copia-correzioni (AWS); mcp (il server MCP) e mcp-prova
-  server/                    l'API Hono (index.ts), la registrazione della pagina Live, gli scatti
-  foto/                      dalla webcam al diario: webcam.ts (scattare), importazione.ts (una foto),
-                             pipeline.ts (foto → visione → Zod → embedding)
-  modelli/                   tutto ciò che parla con un modello: llm.ts (fabbrica Ollama/Bedrock),
-                             modelli.ts (visione + embedding del testo), immagini.ts (CLIP), schema.ts (contratto Zod)
-  agente/                    la chat LangChain/LangGraph: tool, middleware (guardrail), prompt, episodi
-  db/                        db.ts: tutte le query (il resto del codice non sa che sotto c'è Postgres)
-  comune/                    env.ts (.env), uccellini.ts, api-types.ts (tipi condivisi col frontend), terminale.ts
+  comandi/                   what "npm run …" launches: importa, scatta, classify, valuta, valuta-agente,
+                             cerca, chiedi, confronta-embedding; carica, migra-aws, copia-correzioni (AWS);
+                             mcp and mcp-prova
+  server/                    the Hono API (app.ts shared with Lambda, index.ts local), MCP server, Live recording
+  aws/                       the two Lambda handlers (API, photo analysis)
+  foto/                      from webcam to diary: webcam.ts, importazione.ts (one photo), s3.ts, pipeline.ts
+  modelli/                   everything that talks to a model: llm.ts (Ollama/Bedrock factory), modelli.ts
+                             (vision + text embeddings), immagini.ts (CLIP), schema.ts (Zod contract), tracce.ts
+  agente/                    the LangChain/LangGraph chat: tools, middleware (guardrail), prompt, episodes
+  db/                        db.ts: every query (the rest of the code doesn't know it's Postgres); connessione.ts
+  comune/                    env.ts (.env), uccellini.ts, api-types.ts (types shared with the frontend), terminale.ts
 web/src/
-  pages/                     Oggi, Live, Archivio, Configurazione, Credits
-  components/                Gallery (correzioni, foto grande), Chat (streaming, traccia)
-  api.ts                     client delle API e lettura degli stream SSE
+  pages/                     Today, Live, Archive, Configuration, Credits
+  components/                Gallery (corrections, large photo), Chat (streaming, trace)
+  api.ts                     API client, SSE streams, English labels for actions and levels
 ```
 
 ---
 
-## Limiti noti
+## Glossary: Italian names in the code
 
-- **Accuratezza ancora modesta** sulle azioni difficili ("mangia" 50%), con foto prese attraverso le sbarre e un modello da 9B quantizzato a 4 bit.
-- **Una foto è un istante**: "si pulisce" e "riposa" in un fotogramma possono essere identici. Il classificatore alterna azioni da uno scatto all'altro e spezza gli episodi.
-- **Lo stato della registrazione vive nel processo del server**: se il server si riavvia, la registrazione si ferma.
-- **Solo macOS** per l'acquisizione (`imagesnap`, `sips`, `caffeinate`).
-- **Nessuna autenticazione**: pensato per girare in locale con un solo utente.
+| Italian | English | | Italian | English |
+|---|---|---|---|---|
+| uccellino | bird | | mangia | eats |
+| gabbia | cage | | beve | drinks |
+| acqua / cibo | water / food | | dorme | sleeps |
+| foto / scatto | photo / shot | | si_pulisce | preens |
+| evento / episodio | event / episode | | gioca | plays |
+| azione | action | | vola | flies |
+| diario | diary | | riposa | rests |
+| correzione | correction | | non_visibile | not visible |
+| strumenti | tools | | da_rifornire | needs refill |
+| valuta | evaluate | | giallo / celeste | yellow / light blue |
 
 ---
 
-## Su AWS
+## Known limitations
 
-Dalla 0.14.0 il diario gira anche online (regione `eu-south-1`, Milano), con l'infrastruttura in Terraform ([infra/](infra/)):
+- **Modest accuracy on the hard actions**, with photos taken through the bars: 56% on actions with Qwen3-VL online, and water around 40% for every model tried.
+- **A photo is an instant**: "preening" and "resting" can look identical in one frame. The classifier alternates actions from one shot to the next and breaks episodes.
+- **The model's descriptions are in Italian** (the vision prompt is): the interface translates actions and levels, not the free text.
+- **Live recording state lives in the server process**: if the server restarts, the recording stops.
+- **macOS only** for capture (`imagesnap`, `sips`, `caffeinate`).
+- **Simple access control online**: one shared password (Basic Auth) for the site and a private link for the remote MCP. Fine for a demo; a real product would use proper accounts and OAuth.
 
-```mermaid
-flowchart LR
-    MAC[Mac: npm run carica] -->|JPG + ora di scatto| S3[(S3)]
-    S3 -->|ObjectCreated| SQS[SQS + DLQ]
-    SQS --> L[Lambda<br/>analizza-foto]
-    L --> BR[Bedrock<br/>Qwen3-VL + Titan]
-    L --> RDS[(RDS Postgres 17<br/>+ pgvector)]
-    CF[CloudFront<br/>+ password] --> WEB[S3: frontend]
-    CF -->|/api| API[Lambda API<br/>Hono, streaming]
-    API --> RDS
-    API --> BR
-```
+---
 
-| Locale | AWS |
-|---|---|
-| cartella `photos/` | S3 (le foto le carica `npm run carica`: la webcam resta sul Mac) |
-| coda in memoria | SQS, 3 tentativi e poi dead letter queue |
-| `importaFoto()` | `importaJpg()` dentro la Lambda `analizza-foto` |
-| Ollama (`qwen3.5:9b`, `nomic-embed-text`) | Bedrock: Qwen3-VL 235B (visione), Qwen3 235B (chat), Titan v2 (embedding, 1024 dim.) |
-| Postgres in Docker | RDS Postgres `db.t4g.micro`: SSL e login con token IAM, niente password per l'app |
-| server Hono | lo stesso `app.ts` in una Lambda con Function URL e response streaming |
+## Next steps
 
-Le scelte e i loro perché sono nei commenti dei file `.tf` e nel [CHANGELOG](CHANGELOG.md) della 0.14.0 (Aurora scartata per il piano free, Lambda fuori dalla VPC per non pagare una NAT, modelli scelti misurando con `valuta`).
-
-Prossimi passi:
-
-- [x] **Provider astratto** (Ollama | Bedrock) con LangChain, scelto via env.
-- [x] La stessa `npm run valuta` su Ollama e Bedrock (0.14.0): Qwen3-VL azioni 56% contro 65% in locale, ~4 s a foto contro ~40 s.
-- [ ] **Voto a maggioranza** su scatti consecutivi, per stabilizzare le azioni e i conteggi degli episodi.
-- [ ] **Few-shot visivo** con le correzioni della galleria come esempi nel prompt.
-- [ ] **Embedding delle immagini (CLIP)** e confronto con la ricerca sulle descrizioni.
-- [ ] Notifica quando acqua o cibo sono scarsi.
+- [x] **Abstract provider** (Ollama | Bedrock) with LangChain, chosen via env.
+- [x] The same `npm run valuta` on Ollama and Bedrock (0.14.0): Qwen3-VL actions 56% vs 65% locally, ~4 s per photo vs ~40 s.
+- [x] **Online on AWS** with Terraform (0.14.0), **MCP** local and remote (0.15–0.16), **LangSmith** traces and agent evals (0.17).
+- [ ] Fix the two tools found by `valuta-agente` (time after the last cage check; "while one bird does X").
+- [ ] **Majority vote** over consecutive shots, to stabilise actions and episode counts.
+- [ ] **Visual few-shot** with gallery corrections as examples in the prompt.
+- [ ] Tracing on the chat Lambda, and 👍/👎 feedback from the chat into LangSmith.
+- [ ] An alert when water or food is low.

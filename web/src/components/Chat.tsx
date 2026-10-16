@@ -1,12 +1,19 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { chiediInStreaming, type ChatApi, type EventoChat, type PassoTraccia } from "../api";
+import { chiediInStreaming, formatDay, oggi, useApi, type ChatApi, type EventoChat, type GiornoApi, type PassoTraccia } from "../api";
 
 type Message = { role: "user" | "assistant"; text: string; traccia?: ChatApi["traccia"] };
 
-const SUGGESTIONS = ["Quante volte ha mangiato Cippi oggi?", "Cosa ha fatto Sky oggi?", "C'è abbastanza acqua?"];
+// Le domande di esempio parlano dell'ultimo giorno con foto: "today" se è oggi, altrimenti la data
+// (online il diario può fermarsi a qualche giorno fa, e "today" troverebbe un giorno vuoto).
+const suggerimenti = (quando: string) => [
+  `How many times did Cippi eat ${quando}?`,
+  `What did Sky do ${quando}?`,
+  `Did Cippi and Sky play together ${quando}?`,
+  `When were water and food low ${quando}?`,
+];
 const BENVENUTO: Message = {
   role: "assistant",
-  text: "Ciao! Chiedimi cosa hanno fatto Cippi e Sky, quante volte hanno mangiato, o com'è messa la gabbia.",
+  text: "Hi! Ask me what Cippi and Sky did, how many times they ate, or how the cage is doing.",
 };
 
 // Il modello a volte usa il markdown: togliamo gli asterischi invece di chiederglielo nel prompt
@@ -53,7 +60,7 @@ function applica(m: Message, e: EventoChat): Message {
     case "fine": // la versione definitiva del server sostituisce quella costruita a pezzi
       return { ...m, text: e.risposta, traccia: e.traccia };
     case "errore":
-      return { ...m, text: `⚠️ Errore: ${e.messaggio}` };
+      return { ...m, text: `⚠️ Error: ${e.messaggio}` };
   }
 }
 
@@ -62,6 +69,9 @@ export function Chat() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const { data: giorni } = useApi<GiornoApi[]>("/giorni");
+  const ultimo = giorni?.[0]?.giorno;
+  const quando = !ultimo || ultimo === oggi() ? "today" : `on ${formatDay(ultimo)}`;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -84,7 +94,7 @@ export function Chat() {
     try {
       await chiediInStreaming(text, storia, (e) => aggiornaUltima((m) => applica(m, e)));
     } catch (e) {
-      aggiornaUltima((m) => ({ ...m, text: `⚠️ Errore: ${(e as Error).message}` }));
+      aggiornaUltima((m) => ({ ...m, text: `⚠️ Error: ${(e as Error).message}` }));
     } finally {
       setLoading(false);
     }
@@ -107,7 +117,7 @@ export function Chat() {
             <div key={i} className={`bubble ${m.role}`}>
               {staPensando ? (
                 <div className="pensando">
-                  <p className="pensando-etichetta">Sto pensando…</p>
+                  <p className="pensando-etichetta">Thinking…</p>
                   {!!m.traccia?.length && <Traccia passi={m.traccia} />}
                 </div>
               ) : (
@@ -119,7 +129,7 @@ export function Chat() {
         <div ref={endRef} />
       </div>
       <div className="suggestions">
-        {SUGGESTIONS.map((s) => (
+        {suggerimenti(quando).map((s) => (
           <button key={s} type="button" onClick={() => send(s)} disabled={loading}>{s}</button>
         ))}
       </div>
@@ -127,9 +137,9 @@ export function Chat() {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Scrivi una domanda…"
+          placeholder="Ask a question…"
         />
-        <button type="submit" disabled={loading || !input.trim()}>Invia</button>
+        <button type="submit" disabled={loading || !input.trim()}>Send</button>
       </form>
     </section>
   );

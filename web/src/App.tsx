@@ -13,10 +13,10 @@ import { Oggi } from "./pages/Oggi";
 const ONLINE = import.meta.env.VITE_ONLINE === "1";
 
 const LINKS = [
-  { to: "/", label: "Oggi" },
+  { to: "/", label: "Today" },
   ...(ONLINE ? [] : [{ to: "/live", label: "Live" }]),
-  { to: "/archivio", label: "Archivio" },
-  { to: "/configurazione", label: "Configurazione" },
+  { to: "/archivio", label: "Archive" },
+  { to: "/configurazione", label: "Configuration" },
   { to: "/credits", label: "Credits" },
 ];
 
@@ -36,13 +36,13 @@ function Logo() {
 function StatoSistema() {
   const { error, loading } = useApi<UccellinoApi[]>("/uccellini");
   const stato = loading ? "attesa" : error ? "offline" : "online";
-  const testo = loading ? "Connessione…" : error ? "API non raggiungibile" : "Sistema attivo";
+  const testo = loading ? "Connecting…" : error ? "API unreachable" : "System online";
   return (
     <div className="stato-sistema" title={error ?? undefined}>
       <span className={`stato-punto ${stato}`} />
       <span>{testo}</span>
       <span className="stato-dettaglio">
-        {ONLINE ? `AWS · ${configs.aws.modelli.visione}` : `Locale · ${configs.locale.modelli.visione}`}
+        {ONLINE ? `AWS · ${configs.aws.modelli.visione}` : `Local · ${configs.locale.modelli.visione}`}
       </span>
     </div>
   );
@@ -56,7 +56,7 @@ export function App() {
           <Link to="/" className="brand">
             <Logo />
             <span className="brand-nome">Cippi Cam</span>
-            <span className="brand-sottotitolo">Monitoraggio comportamentale</span>
+            <span className="brand-sottotitolo">Behaviour monitoring</span>
           </Link>
           <nav className="nav">
             {LINKS.map((l) => (
@@ -76,7 +76,7 @@ export function App() {
           <Route path="/archivio/:giorno" element={<ArchivioGiorno />} />
           <Route path="/configurazione" element={<Configurazione />} />
           <Route path="/credits" element={<Credits />} />
-          <Route path="*" element={<p className="muted">Pagina non trovata.</p>} />
+          <Route path="*" element={<p className="muted">Page not found.</p>} />
         </Routes>
       </div>
     </BrowserRouter>

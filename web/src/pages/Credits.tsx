@@ -1,13 +1,13 @@
 const STACK = [
-  ["Ollama", "modelli in locale"],
-  ["qwen3.5:9b", "visione: classifica le foto"],
-  ["qwen3.5:9b (agente)", "risponde in chat scegliendo i tool: SQL o ricerca semantica"],
-  ["Postgres + pgvector", "diario delle foto e ricerca per significato"],
-  ["Hono", "API"],
-  ["Zod", "contratto e validazione dell'output dei modelli"],
-  ["React + TypeScript", "interfaccia"],
-  ["Vite", "dev server e build"],
-  ["React Router", "navigazione tra le pagine"],
+  ["Qwen3-VL 235B · qwen3.5:9b", "vision: what each bird is doing, water and food (Bedrock online, Ollama locally)"],
+  ["Qwen3 235B", "the chat agent: picks the tools (SQL summaries or semantic search)"],
+  ["LangChain + LangGraph", "agent loop, tools and guardrail middleware"],
+  ["Zod", "the contract: model output, tool arguments, HTTP bodies"],
+  ["Postgres + pgvector", "the diary and search by meaning (RDS on AWS)"],
+  ["AWS", "S3, SQS, Lambda, Bedrock, RDS, CloudFront, all in Terraform"],
+  ["MCP", "the diary tools for any MCP client (Claude Desktop, claude.ai)"],
+  ["LangSmith", "agent traces and evaluation"],
+  ["Hono · React · Vite", "API and interface"],
 ];
 
 export function Credits() {
@@ -15,15 +15,15 @@ export function Credits() {
     <section className="panel credits">
       <h2>Credits</h2>
       <p>
-        <strong>Cippi Cam</strong> osserva Cippi, il pappagallino di casa, classifica cosa sta facendo e tiene
-        un diario della sua giornata, che puoi interrogare in chat.
+        <strong>Cippi Cam</strong> watches Cippi and Sky, the two budgies at home, classifies what they are doing
+        and keeps a diary of their day that you can ask questions to in the chat.
       </p>
 
-      <h3>Protagonista</h3>
-      <p>🐦 Cippi</p>
+      <h3>Starring</h3>
+      <p>🐦 Cippi (yellow) and Sky (light blue)</p>
 
-      <h3>Sviluppo</h3>
-      <p>Gianluca Giordano, con l'aiuto di Claude Code</p>
+      <h3>Built by</h3>
+      <p>Gianluca Giordano, with the help of Claude Code</p>
 
       <h3>Stack</h3>
       <dl>

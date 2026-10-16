@@ -23,9 +23,11 @@ import { systemPrompt } from "./prompt.js";
 // I middleware si eseguono nell'ordine in cui li passiamo a createAgent (il primo è il più esterno).
 
 // --- Il "contesto": dati che passiamo all'agente a ogni domanda, uguali per tutto il giro ---
-// Qui ci passiamo una funzione per segnalare alla chat (in grigio) gli interventi del guardrail.
+// Qui ci passiamo una funzione per segnalare alla chat (in grigio) gli interventi del guardrail,
+// e la lingua della domanda (lingua.ts), che decide la lingua della risposta.
 export const ContestoAgente = z.object({
   segnala: z.custom<(testo: string) => void>().optional(),
+  lingua: z.enum(["it", "en"]).optional(),
 });
 
 /** Il testo di un messaggio, che il provider lo dia come stringa o come lista di blocchi. */
@@ -35,7 +37,9 @@ const testoDi = (m: AIMessage) => m.text;
 //    acceso da ieri penserebbe che "oggi" sia ancora ieri.
 export const promptDelGiorno = createMiddleware({
   name: "PromptDelGiorno",
-  wrapModelCall: (request, handler) => handler({ ...request, systemPrompt: systemPrompt() }),
+  contextSchema: ContestoAgente,
+  wrapModelCall: (request, handler) =>
+    handler({ ...request, systemPrompt: systemPrompt(request.runtime.context?.lingua) }),
 });
 
 // 2. Guardrail contro le risposte inventate.
@@ -55,7 +59,7 @@ export const guardrailRisposteInventate = createMiddleware({
     if (!sospetta) return risposta;
 
     const segnala = request.runtime.context?.segnala ?? (() => {});
-    segnala("Risposta con numeri senza aver consultato il diario: la scarto e riprovo ragionando.");
+    segnala("Answer with numbers but no diary lookup: discarded, retrying with reasoning.");
 
     // Stessa richiesta, ma con il modello "ragionante": più lento, ma sceglie i tool molto meglio.
     const ragionante = await unaVolta("chat:ragionante", () => modelloChat({ ragionamento: true }));
@@ -65,8 +69,13 @@ export const guardrailRisposteInventate = createMiddleware({
     if (!ancoraSospetta) return seconda;
 
     // Meglio nessuna risposta che una inventata.
-    segnala("Di nuovo una risposta senza consultare il diario: la scarto.");
-    return new AIMessage("Non sono riuscito a consultare il diario per questa domanda. Prova a riformularla.");
+    segnala("Again an answer without a diary lookup: discarded.");
+    // La risposta di riserva è mostrata così com'è: nella lingua della domanda.
+    return new AIMessage(
+      request.runtime.context?.lingua === "en"
+        ? "I couldn't look this up in the diary. Try rephrasing the question."
+        : "Non sono riuscito a consultare il diario per questa domanda. Prova a riformularla.",
+    );
   },
 });
 

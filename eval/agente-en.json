@@ -1,0 +1,92 @@
+{
+  "nota": "Le stesse domande di agente.json, in inglese: l'agente deve rispondere nella lingua della domanda. Stesse risposte attese (diario su RDS, 2026-10-14). tool: 'a|b' = basta uno dei due. Le regex non distinguono maiuscole e minuscole.",
+  "domande": [
+    {
+      "domanda": "How many times did Sky eat on October 14, 2026?",
+      "tool": ["conta_eventi|eventi_del_giorno"],
+      "deve_contenere": ["\\b(2|two|twice)\\b", "16:35", "16:37"],
+      "tipo": "conteggio"
+    },
+    {
+      "domanda": "How many times did Cippi play on October 14, 2026?",
+      "tool": ["conta_eventi|eventi_del_giorno"],
+      "deve_contenere": ["\\b(6|six)\\b"],
+      "tipo": "conteggio"
+    },
+    {
+      "domanda": "When did Cippi fly on October 14, 2026?",
+      "tool": ["conta_eventi|eventi_del_giorno"],
+      "deve_contenere": ["16:32"],
+      "tipo": "conteggio"
+    },
+    {
+      "domanda": "Did Sky sleep on October 14, 2026? At what time?",
+      "tool": ["conta_eventi|eventi_del_giorno"],
+      "deve_contenere": ["16:24"],
+      "tipo": "conteggio"
+    },
+    {
+      "domanda": "On October 14, 2026, was there a moment when both water and food were missing?",
+      "tool": ["stato_gabbia|eventi_del_giorno"],
+      "deve_contenere": ["16:25"],
+      "tipo": "gabbia: era sbagliata prima della 0.14.0"
+    },
+    {
+      "domanda": "On October 14, 2026, when did the water need a refill in the late afternoon?",
+      "tool": ["stato_gabbia|eventi_del_giorno"],
+      "deve_contenere": ["16:17", "16:26"],
+      "tipo": "gabbia"
+    },
+    {
+      "domanda": "What time was the last cage check on October 14, 2026?",
+      "tool": ["stato_gabbia"],
+      "deve_contenere": ["16:43"],
+      "tipo": "gabbia"
+    },
+    {
+      "domanda": "Did Cippi and Sky play together on October 14, 2026?",
+      "tool": ["momenti_insieme"],
+      "deve_contenere": ["15:23"],
+      "non_deve_contenere": ["\\b(did not|didn't|never) play(ed)? together\\b"],
+      "tipo": "insieme: era sbagliata prima della 0.14.0"
+    },
+    {
+      "domanda": "On October 14, 2026, while Cippi was eating, what was Sky doing?",
+      "tool": ["momenti_insieme"],
+      "deve_contenere": ["rest", "preen|clean|groom"],
+      "tipo": "insieme"
+    },
+    {
+      "domanda": "What were Cippi and Sky doing at 16:26 on October 14, 2026?",
+      "tool": ["eventi_del_giorno"],
+      "deve_contenere": ["play", "preen|clean|groom"],
+      "tipo": "momento preciso: era sbagliata prima della 0.14.0"
+    },
+    {
+      "domanda": "What was Cippi doing at 16:30 on October 14, 2026?",
+      "tool": ["eventi_del_giorno"],
+      "deve_contenere": ["rest"],
+      "tipo": "momento preciso"
+    },
+    {
+      "domanda": "On October 14, 2026, was Sky near the bars of the cage?",
+      "tool": ["cerca_momenti"],
+      "deve_contenere": ["16:(25|26|29|30)"],
+      "tipo": "ricerca per significato"
+    },
+    {
+      "domanda": "What did Cippi and Sky do on October 13, 2026?",
+      "tool": ["eventi_del_giorno|conta_eventi"],
+      "deve_contenere": ["\\bno\\b|\\bnot\\b|none|nothing|n't"],
+      "non_deve_contenere": ["\\b\\d{1,2}:\\d{2}\\b"],
+      "tipo": "trabocchetto: giorno senza dati"
+    },
+    {
+      "domanda": "How many times did Cippi eat on October 13, 2026?",
+      "tool": ["conta_eventi|eventi_del_giorno"],
+      "deve_contenere": ["\\bno\\b|\\bnot\\b|none|zero|\\b0\\b|nothing|n't"],
+      "non_deve_contenere": ["\\b[1-9]\\d* times?\\b|\\btwice\\b|\\bonce\\b"],
+      "tipo": "trabocchetto: giorno senza dati"
+    }
+  ]
+}

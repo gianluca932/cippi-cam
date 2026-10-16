@@ -18,6 +18,22 @@ export const EMOJI: Record<string, string> = {
 
 export const AZIONI = Object.keys(EMOJI); // come AZIONI in src/schema.ts
 
+// L'interfaccia è in inglese; nel database e nell'API i valori restano quelli dello schema (in italiano).
+export const NOME_AZIONE: Record<string, string> = {
+  mangia: "eating",
+  beve: "drinking",
+  dorme: "sleeping",
+  si_pulisce: "preening",
+  gioca: "playing",
+  vola: "flying",
+  riposa: "resting",
+  non_visibile: "not visible",
+};
+export const nomeAzione = (azione: string) => NOME_AZIONE[azione] ?? azione.replace("_", " ");
+
+export const NOME_LIVELLO: Record<string, string> = { ok: "ok", da_rifornire: "refill", non_visibile: "not seen" };
+export const nomeLivello = (livello: string) => NOME_LIVELLO[livello] ?? livello.replace("_", " ");
+
 // Colori dei pallini: dal nome del colore in config/uccellini.json.
 export const COLORE_CSS: Record<string, string> = {
   giallo: "#f2c94c",
@@ -28,12 +44,13 @@ export const COLORE_CSS: Record<string, string> = {
   blu: "#2f80ed",
 };
 
-// "2026-10-12" → "lunedì 12 ottobre" (a mezzogiorno, per non slittare di fuso orario)
+// "2026-10-12" → "Monday 12 October" (a mezzogiorno, per non slittare di fuso orario)
 export const formatDay = (giorno: string) =>
-  new Date(`${giorno}T12:00`).toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
+  new Date(`${giorno}T12:00`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
 
+// en-GB: orari a 24 ore ("16:43"), come nelle risposte dell'agente.
 export const formatOra = (iso: string) =>
-  new Date(iso).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+  new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
 // Oggi nel fuso del browser, come "YYYY-MM-DD".
 export const oggi = () => new Date().toLocaleDateString("sv-SE");

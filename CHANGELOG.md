@@ -1,393 +1,425 @@
 # Changelog
 
-Tutte le modifiche rilevanti di Cippi Cam, dalla più recente alla più vecchia.
-Il formato segue [Keep a Changelog](https://keepachangelog.com/it/1.1.0/) e le versioni [Semantic Versioning](https://semver.org/lang/it/). Ogni versione corrisponde a un commit con il tag `vX.Y.Z`; per le versioni fino alla 0.10.0, ricostruite a posteriori, tra parentesi c'è anche l'hash.
+All notable changes to Cippi Cam, newest first.
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/). Each version is one commit tagged `vX.Y.Z`; for the versions up to 0.10.0, reconstructed afterwards, the hash is also given in brackets. Commit and tag messages before 0.18.0 are in Italian.
 
-Le sezioni **Misurato** riportano i risultati di `npm run valuta` e `npm run confronta-embedding` al momento della modifica.
+The **Measured** sections report the results of `npm run valuta`, `npm run valuta-agente` and `npm run confronta-embedding` at the time of the change.
 
 ---
 
-## [0.17.0] — 2026-10-16 · LangSmith: tracce dell'agente e valuta-agente
+## [0.18.0] — 2026-10-16 · English interface, docs and agent answers
 
-### Aggiunto
-- **Tracce su LangSmith** (progetto `cippi-cam`): con `LANGSMITH_TRACING=true` nel `.env`, LangChain e LangGraph mandano ogni esecuzione dell'agente con chiamate al modello, tool, argomenti, risultati, token e tempi. Non serve codice: basta la configurazione.
-- **`npm run valuta-agente`** ([src/comandi/valuta-agente.ts](src/comandi/valuta-agente.ts)): `valuta` per la chat, come chiede la regola d'oro n. 2. Le 14 domande stanno in [eval/agente.json](eval/agente.json), versionato in git: conteggi, gabbia, momenti insieme, momenti precisi, ricerca per significato e due trabocchetti su un giorno senza dati. Il comando le sincronizza nel dataset `cippi-cam-agente` (si ricrea solo se il file cambia) e crea un esperimento su LangSmith.
-- **Valutatori in codice**: `tool_giusti` (sono stati chiamati i tool attesi? `a|b` = basta uno dei due) e `risposta_giusta` (espressioni regolari che la risposta deve contenere e non deve contenere). Sono deterministici e gratuiti; un giudice LLM può aggiungersi dopo, per quello che le regex non vedono.
-- `langsmith` tra le dipendenze dirette.
+### Added
+- **The agent answers in the language of the question** (Italian or English). The language is decided **in code** ([src/agente/lingua.ts](src/agente/lingua.ts)) by counting common words, and passed through the agent context to the system prompt: "answer in English" for English questions, the original Italian rule for Italian ones. The guardrail's fallback answer follows the same language.
+- [eval/agente-en.json](eval/agente-en.json): the 14 agent questions in English, with English regexes. `valuta-agente --file …` picks the file; the LangSmith dataset is named after it (`cippi-cam-agente-en`).
+- Interface labels for the Italian values of the API (`nomeAzione`, `nomeLivello` in [web/src/api.ts](web/src/api.ts)): *eating, resting, preening, refill, not seen…*. The database keeps the schema values.
 
-### Modificato
-- **Le foto non finiscono nelle tracce**: le chiamate di visione su Bedrock passano un tracer suo ([src/modelli/tracce.ts](src/modelli/tracce.ts)) che sostituisce le immagini base64 con `[immagine]`. LangChain aggiunge il tracer dell'ambiente solo se la chiamata non ne ha già uno. Su Ollama la visione non passa da LangChain e non è tracciata.
+### Changed
+- **Interface in English**: navigation, pages, gallery, chat, Live page, Configuration; dates and times in `en-GB` ("Wednesday 14 October", "16:43"); `<html lang="en">`.
+- **Chat suggestions point to the latest day with photos**: "today" if it's today, otherwise the date. Online the diary stops at 14 October, and "today" questions found an empty day.
+- **Credits** updated: both birds and the current stack (AWS, Bedrock, MCP, LangSmith).
+- Guardrail messages shown in the chat trace are in English.
+- **README, CHANGELOG and CLAUDE.md in English**, for the people coming from the demo video. The README gained a glossary of the Italian names in the code; CLAUDE.md now states the language split (chat with the user in Italian; UI and docs in English; code, prompts and data in Italian) and that commit messages are in English from this version on.
 
-### Misurato
-- Primo esperimento, Qwen3 235B su Bedrock, diario su RDS: **tool giusti 14/14, risposte giuste 12/14**, 1-3 s a domanda. Le tre domande sbagliate prima della 0.14.0 (acqua e cibo insieme, giocare insieme, le 16:26) ora passano.
-- Le due risposte sbagliate dipendono da due **tool**, non dal modello:
-  - "quando era da rifornire l'acqua nel pomeriggio tardi?": il modello chiede `stato_gabbia` alle 18:00 e alle 20:00, e il tool risponde con l'ultimo controllo (16:43) **senza dire che dopo non ci sono dati**. Il modello allora scrive "alle 18:00 era ok", un'informazione inventata.
-  - "mentre Cippi mangiava, cosa faceva Sky?": `momenti_insieme` con `azione` vuol dire "lo fanno tutti e due", e la risposta è vuota. Manca un filtro "quando **uno** fa X".
-- Tracce della visione senza foto: verificato su LangSmith (1.800-4.600 caratteri a chiamata, `[immagine]` al posto del base64). Le previsioni non cambiano: la modifica tocca solo il tracing (provata su una foto con `valuta --foto`).
+### Measured
+`npm run valuta-agente`, Qwen3 235B on Bedrock, diary on RDS (right tools · right answers):
 
-### Problemi noti
-- La destinazione "agente" di LangSmith (`LANGSMITH_AGENT_ID` / `LANGSMITH_AGENT_ENVIRONMENT`) non funziona con LangChain: `@langchain/core` 1.2.17 manda sempre le esecuzioni a un progetto, e le due destinazioni insieme danno errore. Si usa `LANGSMITH_PROJECT`.
-- In alcuni controlli della gabbia `stato_gabbia` restituisce `cibo: null`: da capire insieme alla correzione del tool.
-- Le risposte attese di `eval/agente.json` valgono per il diario su RDS: il Postgres locale ha analisi diverse (qwen3.5:9b).
-- Sulla Lambda della chat il tracing non è ancora attivo.
+| | Italian (14) | English (14) |
+|---|---|---|
+| before (0.17.0, "rispondi in italiano") | 14 · 12 | — |
+| "answer in the language of the question" in the prompt | 14 · 12 | 14 · 12 |
+| same, with the rule made more emphatic | 14 · 13 | 14 · **11** |
+| **language decided in code** | 14 · **13** | 13 · **14** |
 
-## [0.16.0] — 2026-10-15 · MCP remoto su AWS con link unico
+- With the rule only in the prompt, English questions about a day with no data got answers **in Italian** (1, then 2 of 14): the prompt and the tool data are in Italian, and with little to say the model slipped back. Making the rule more emphatic made it worse. Deciding the language in code fixed it: 14/14 English answers, all in English.
+- The Italian prompt for Italian questions is identical to 0.17.0; 12 vs 13 is the model's variance on the "late afternoon" question.
+- The English ❌ on tools: "while Cippi was eating, what was Sky doing?" used `eventi_del_giorno` twice instead of `momenti_insieme`, and answered correctly by crossing the times itself. The dataset is not changed after the fact.
 
-### Aggiunto
-- **MCP remoto** (Streamable HTTP) sulla route `/api/mcp/<token>` della Lambda dell'API, per i connettori personalizzati di claude.ai (web e telefono). *Stateless*: su Lambda ogni richiesta può arrivare a un'istanza diversa, quindi niente sessioni, e server e trasporto si creano a ogni richiesta. Risposte JSON invece di SSE, perché i tool rispondono in un colpo solo.
-- **Link unico** come protezione, una scelta da demo: un token di 40 caratteri generato da Terraform (`random_password.mcp`, output `mcp_url`) sta nell'URL. La route salta la Basic Auth (i connettori non la mandano), confronta il token in tempo costante e con un token sbagliato risponde 404. I tool sono in sola lettura. Per revocarlo: `terraform apply -replace=random_password.mcp`.
-- `npm run mcp:prova -- --url URL`: lo stesso client di prova, sul trasporto HTTP.
-- In locale l'MCP remoto si accende con `MCP_TOKEN` nel `.env`.
+### Known issues
+- The model's free-text descriptions (scene, posture, notes) stay in Italian: they come from the vision prompt, which wasn't changed.
+- Still open from 0.17.0: `stato_gabbia` with a time after the last check, and `momenti_insieme` without a "when one bird does X" filter.
 
-### Modificato
-- La creazione del server MCP è passata in [src/server/mcp.ts](src/server/mcp.ts), usata sia da stdio ([src/comandi/mcp.ts](src/comandi/mcp.ts)) sia da HTTP ([app.ts](src/server/app.ts)).
+## [0.17.0] — 2026-10-16 · LangSmith: agent traces and valuta-agente
 
-### Misurato
-- Su AWS: token sbagliato → 404; API e sito senza password → 401; con il link giusto `tools/list` restituisce i 5 tool, e `conta_eventi`, `stato_gabbia` e `cerca_momenti` (che chiama Titan dalla Lambda) rispondono con i dati di RDS. Client di prova completo in ~4,6 s, compreso l'avvio a freddo.
+### Added
+- **Traces on LangSmith** (project `cippi-cam`): with `LANGSMITH_TRACING=true` in `.env`, LangChain and LangGraph send every agent run with model calls, tools, arguments, results, tokens and timings. No code needed, just configuration.
+- **`npm run valuta-agente`** ([src/comandi/valuta-agente.ts](src/comandi/valuta-agente.ts)): `valuta` for the chat, as golden rule no. 2 requires. The 14 questions live in [eval/agente.json](eval/agente.json), versioned in git: counts, cage, moments together, exact moments, search by meaning and two trick questions about a day with no data. The command syncs them into the `cippi-cam-agente` dataset (recreated only if the file changes) and creates an experiment on LangSmith.
+- **Evaluators in code**: `tool_giusti` (were the expected tools called? `a|b` = either one) and `risposta_giusta` (regular expressions the answer must and must not contain). Deterministic and free; an LLM judge can be added later for what regexes can't see.
+- `langsmith` as a direct dependency.
 
-### Problemi noti
-- Il link è l'unica protezione: chi lo ha può leggere il diario e far fare ricerche su Bedrock (frazioni di centesimo ciascuna). Per un uso non da demo servirebbe OAuth, l'autenticazione prevista da MCP.
+### Changed
+- **Photos don't end up in the traces**: vision calls on Bedrock pass their own tracer ([src/modelli/tracce.ts](src/modelli/tracce.ts)) that replaces base64 images with `[immagine]`. LangChain adds the environment tracer only if the call doesn't already have one. On Ollama the vision call doesn't go through LangChain and isn't traced.
 
-## [0.15.0] — 2026-10-15 · Server MCP con i tool del diario
+### Measured
+- First experiment, Qwen3 235B on Bedrock, diary on RDS: **right tools 14/14, right answers 12/14**, 1–3 s per question. The three questions that failed before 0.14.0 (water and food low together, playing together, "at 16:26") now pass.
+- The two wrong answers come from two **tools**, not from the model:
+  - "when did the water need a refill in the late afternoon?": the model asks `stato_gabbia` for 18:00 and 20:00, and the tool answers with the last check (16:43) **without saying there's no data after it**. The model then writes "at 18:00 it was ok", which is made up.
+  - "while Cippi was eating, what was Sky doing?": `momenti_insieme` with `azione` means "both are doing it", so the result is empty. A "when **one** bird does X" filter is missing.
+- Vision traces without photos: checked on LangSmith (1,800–4,600 characters per call, `[immagine]` instead of base64). Predictions don't change: the change only touches tracing (tried on one photo with `valuta --foto`).
 
-### Aggiunto
-- **Server MCP** ([src/comandi/mcp.ts](src/comandi/mcp.ts)): i cinque tool dell'agente esposti con il Model Context Protocol su stdio, usabili da Claude Desktop, Claude Code o qualunque client MCP. I tool di LangChain hanno già nome, descrizione e schema Zod: il server li registra in un ciclo, quindi una modifica a un tool vale per la chat e per MCP. Tutti segnati `readOnlyHint`; gli errori tornano al modello come testo.
-- [src/comandi/mcp-avvio.ts](src/comandi/mcp-avvio.ts), importato per primo: manda i log su stderr (stdout è il canale del protocollo, una riga di log romperebbe il JSON-RPC) e sposta la cartella di lavoro nella radice del progetto, perché il client lo avvia da dove vuole.
-- `npm run mcp:prova` ([src/comandi/mcp-prova.ts](src/comandi/mcp-prova.ts)): un client MCP minimo che avvia il server, chiede `tools/list` e chiama due tool. Con `DB_PROVIDER=rds` lavora sul diario su AWS.
-- [.mcp.json](.mcp.json): Claude Code trova il server da solo aprendo il progetto. Nel README la configurazione per Claude Desktop, anche sul diario su AWS.
+### Known issues
+- LangSmith's "agent" destination (`LANGSMITH_AGENT_ID` / `LANGSMITH_AGENT_ENVIRONMENT`) doesn't work with LangChain: `@langchain/core` 1.2.17 always sends runs to a project, and both destinations together raise an error. `LANGSMITH_PROJECT` is used instead.
+- For some cage checks `stato_gabbia` returns `cibo: null`: to be understood together with the tool fix.
+- The expected answers in `eval/agente.json` hold for the diary on RDS: local Postgres has different analyses (qwen3.5:9b).
+- Tracing is not active on the chat Lambda yet.
 
-### Misurato
-- Prove del protocollo, non del modello: `tools/list` restituisce i 5 tool, e `conta_eventi`, `stato_gabbia` e `momenti_insieme` danno gli stessi riassunti della chat, sia sul Postgres locale sia su RDS. Il server risponde anche avviato da `/` con l'ambiente vuoto, come lo avvia Claude Desktop.
+## [0.16.0] — 2026-10-15 · Remote MCP on AWS with a private link
 
-### Problemi noti
-- Il server gira sul Mac (stdio): da claude.ai sul web non si usa. Serve un MCP remoto su HTTP (prossima versione).
-- I tool considerano "oggi" la data corrente: sul diario su AWS c'è solo il 14 ottobre, quindi nelle domande va indicata la data.
+### Added
+- **Remote MCP** (Streamable HTTP) on the `/api/mcp/<token>` route of the API Lambda, for claude.ai custom connectors (web and phone). *Stateless*: on Lambda each request can land on a different instance, so no sessions, and server and transport are created per request. JSON responses instead of SSE, because the tools answer in one go.
+- **Private link** as protection, a demo choice: a 40-character token generated by Terraform (`random_password.mcp`, output `mcp_url`) sits in the URL. The route skips Basic Auth (connectors don't send it), compares the token in constant time and answers 404 to a wrong one. The tools are read-only. To revoke it: `terraform apply -replace=random_password.mcp`.
+- `npm run mcp:prova -- --url URL`: the same test client, over HTTP.
+- Locally the remote MCP is switched on with `MCP_TOKEN` in `.env`.
 
-## [0.14.0] — 2026-10-15 · Online su AWS con Terraform, Qwen su Bedrock e agente con gli orari
+### Changed
+- Creating the MCP server moved to [src/server/mcp.ts](src/server/mcp.ts), used by both stdio ([src/comandi/mcp.ts](src/comandi/mcp.ts)) and HTTP ([app.ts](src/server/app.ts)).
 
-### Aggiunto
-- **Infrastruttura su AWS in Terraform** ([infra/](infra/), regione `eu-south-1`), stato su S3. La pipeline: il Mac carica i JPG su S3 (`npm run carica`) → notifica → SQS (3 tentativi, poi dead letter queue per 14 giorni) → Lambda `analizza-foto` → Bedrock → RDS. Il sito: CloudFront davanti a S3 (frontend) e a una Lambda con Function URL e response streaming (API, la stessa `app.ts` del server locale).
-- **[src/server/app.ts](src/server/app.ts)**: le route comuni a server locale e Lambda; il server locale aggiunge solo la pagina Live. **[src/aws/](src/aws/)**: i due handler. **[src/foto/s3.ts](src/foto/s3.ts)**: chiavi e metadati (l'ora di scatto viaggia come metadato dell'oggetto).
-- **`DB_PROVIDER=pg|rds`** in [src/db/connessione.ts](src/db/connessione.ts): su RDS l'utente `diario` entra senza password, con un token IAM firmato e in SSL verificando il certificato di RDS ([config/rds-ca-eu-south-1.pem](config/rds-ca-eu-south-1.pem)). Le query di `db.ts` non cambiano.
-- Comandi: `carica`, `build:lambda` (esbuild), `db:migra:aws` (schema, migrazioni, uccellini e utente `diario`, con la password del master letta da Secrets Manager), `deploy:web`, `copia-correzioni` (le correzioni della galleria dal Postgres locale a RDS, abbinate per percorso e uccellino, con gli embedding ricalcolati).
-- **Password su tutto il sito**, controllata da una CloudFront Function. Con la password solo sull'API il browser non mostrava il riquadro di login (non lo fa per le `fetch`) e la pagina vedeva l'API "offline". L'API la controlla anche per conto suo.
-- **Agente: i "quando"** ([src/agente/episodi.ts](src/agente/episodi.ts), [strumenti.ts](src/agente/strumenti.ts)). L'agente diceva che acqua e cibo non erano mai mancati insieme (erano scarsi tutti e due dalle 16:23 alle 16:30) e rispondeva a "hanno giocato insieme?" una volta sì e una volta no. Il problema erano i tool, che non avevano gli orari:
-  - `stato_gabbia` ed `eventi_del_giorno` restituiscono gli intervalli già calcolati (`acqua_scarsa`, `cibo_scarso`, `acqua_e_cibo_scarsi_insieme`) e, con `ora`, com'era la gabbia in quel momento;
-  - nuovo tool `momenti_insieme`: le sovrapposizioni degli episodi dei due uccellini, calcolate dal codice.
+### Measured
+- On AWS: wrong token → 404; API and site without password → 401; with the right link `tools/list` returns the 5 tools, and `conta_eventi`, `stato_gabbia` and `cerca_momenti` (which calls Titan from the Lambda) answer with RDS data. Full test client in ~4.6 s, cold start included.
 
-### Modificato
-- **Modelli su Bedrock scelti misurando** (vedi Misurato): Qwen3-VL 235B per la visione, Qwen3 235B per la chat (chiama i tool via Converse), Titan Text Embeddings v2 a 1024 dimensioni.
-- **Database: RDS Postgres `db.t4g.micro` invece di Aurora Serverless v2 + Data API.** Sul piano free di AWS Aurora si crea solo in "express configuration", che il provider Terraform (6.69) non supporta; il piano free limita anche i backup a 1 giorno. RDS è pubblico sulla 5432 perché le Lambda stanno fuori dalla VPC (dentro servirebbe una NAT, ~35 $/mese); per entrare servono SSL e il token IAM. Costo fisso: ~3,6 $/mese di IPv4 pubblico.
-- Gli zip delle Lambda passano da S3: con l'upload diretto il provider falliva con `bufio.Scanner: token too long`.
-- Prompt della visione: tolto l'esempio di postura "testa girata, becco tra le piume dell'ala", che il modello copiava (vedi Problemi noti).
+### Known issues
+- The link is the only protection: whoever has it can read the diary and trigger searches on Bedrock (fractions of a cent each). Beyond a demo it would need OAuth, MCP's intended authentication.
 
-### Corretto
-- **La Lambda `analizza-foto` non partiva**: esbuild incorporava l'`import()` dinamico di CLIP e il suo import (external) finiva in cima a `index.mjs`. Con `splitting` resta un file a parte; il file principale passa da 2,4 a 0,4 MB.
-- L'API rispondeva 500 invece di 401 senza password: `onError` era registrato due volte e trasformava anche le `HTTPException` di Hono.
-- Su RDS la tabella `uccellini` era vuota (in locale la riempie il server all'avvio) e ogni evento falliva sulla chiave esterna: ora la riempie `db:migra:aws`.
-- `db:migra:aws` creava `embedding_testo` a 768 dimensioni se nella shell mancava `LLM_PROVIDER=bedrock`: ora lo imposta lo script e, a tabella vuota, la colonna si corregge da sola.
+## [0.15.0] — 2026-10-15 · MCP server with the diary tools
 
-### Misurato
-`npm run valuta` sulle 57 foto etichettate, stesso prompt, modelli su Bedrock:
+### Added
+- **MCP server** ([src/comandi/mcp.ts](src/comandi/mcp.ts)): the agent's five tools exposed through the Model Context Protocol over stdio, usable from Claude Desktop, Claude Code or any MCP client. LangChain tools already have a name, a description and a Zod schema: the server registers them in a loop, so a change to a tool applies to both the chat and MCP. All marked `readOnlyHint`; errors go back to the model as text.
+- [src/comandi/mcp-avvio.ts](src/comandi/mcp-avvio.ts), imported first: sends logs to stderr (stdout is the protocol channel, one log line would break the JSON-RPC) and moves the working directory to the project root, because the client starts it from anywhere.
+- `npm run mcp:prova` ([src/comandi/mcp-prova.ts](src/comandi/mcp-prova.ts)): a minimal MCP client that starts the server, asks `tools/list` and calls two tools. With `DB_PROVIDER=rds` it works on the diary on AWS.
+- [.mcp.json](.mcp.json): Claude Code finds the server by itself when opening the project. The README has the Claude Desktop configuration, including the diary on AWS.
 
-| | qwen3.5:9b locale (0.13.0) | **Qwen3-VL 235B** | Nova 2 Lite |
+### Measured
+- Protocol tests, not model tests: `tools/list` returns the 5 tools, and `conta_eventi`, `stato_gabbia` and `momenti_insieme` give the same summaries as the chat, on both local Postgres and RDS. The server also answers when started from `/` with an empty environment, as Claude Desktop does.
+
+### Known issues
+- The server runs on the Mac (stdio): it can't be used from claude.ai on the web. That needs a remote MCP over HTTP (next version).
+- The tools treat "today" as the current date: the diary on AWS only has 14 October, so questions need to state the date.
+
+## [0.14.0] — 2026-10-15 · Online on AWS with Terraform, Qwen on Bedrock and an agent that knows when
+
+### Added
+- **AWS infrastructure in Terraform** ([infra/](infra/), region `eu-south-1`), state on S3. The pipeline: the Mac uploads JPGs to S3 (`npm run carica`) → notification → SQS (3 attempts, then a dead letter queue for 14 days) → `analizza-foto` Lambda → Bedrock → RDS. The site: CloudFront in front of S3 (frontend) and of a Lambda with a Function URL and response streaming (API, the same `app.ts` as the local server).
+- **[src/server/app.ts](src/server/app.ts)**: the routes shared by the local server and the Lambda; the local server only adds the Live page. **[src/aws/](src/aws/)**: the two handlers. **[src/foto/s3.ts](src/foto/s3.ts)**: keys and metadata (the capture time travels as object metadata).
+- **`DB_PROVIDER=pg|rds`** in [src/db/connessione.ts](src/db/connessione.ts): on RDS the `diario` user logs in without a password, with a signed IAM token over SSL, verifying the RDS certificate ([config/rds-ca-eu-south-1.pem](config/rds-ca-eu-south-1.pem)). The queries in `db.ts` don't change.
+- Commands: `carica`, `build:lambda` (esbuild), `db:migra:aws` (schema, migrations, birds and the `diario` user, with the master password read from Secrets Manager), `deploy:web`, `copia-correzioni` (gallery corrections from local Postgres to RDS, matched by path and bird, with embeddings recomputed).
+- **Password on the whole site**, checked by a CloudFront Function. With the password only on the API, the browser didn't show the login prompt (it doesn't for `fetch`) and the page saw the API as "offline". The API also checks it on its own.
+- **Agent: the "when"** ([src/agente/episodi.ts](src/agente/episodi.ts), [strumenti.ts](src/agente/strumenti.ts)). The agent said water and food were never missing together (both were low from 16:23 to 16:30) and answered "did they play together?" once yes and once no. The problem was the tools, which had no times:
+  - `stato_gabbia` and `eventi_del_giorno` return precomputed intervals (`acqua_scarsa`, `cibo_scarso`, `acqua_e_cibo_scarsi_insieme`) and, with `ora`, what the cage was like at that moment;
+  - new tool `momenti_insieme`: the overlaps of the two birds' episodes, computed by the code.
+
+### Changed
+- **Bedrock models chosen by measuring** (see Measured): Qwen3-VL 235B for vision, Qwen3 235B for the chat (calls tools through Converse), Titan Text Embeddings v2 at 1024 dimensions.
+- **Database: RDS Postgres `db.t4g.micro` instead of Aurora Serverless v2 + Data API.** On the AWS free plan Aurora can only be created in "express configuration", which the Terraform provider (6.69) doesn't support; the free plan also limits backups to 1 day. RDS is public on 5432 because the Lambdas live outside the VPC (inside they'd need a NAT, ~35 $/month); getting in requires SSL and the IAM token. Fixed cost: ~3.6 $/month for the public IPv4.
+- Lambda zips go through S3: with a direct upload the provider failed with `bufio.Scanner: token too long`.
+- Vision prompt: removed the posture example "head turned, beak in the wing feathers", which the model copied (see Known issues).
+
+### Fixed
+- **The `analizza-foto` Lambda didn't start**: esbuild inlined CLIP's dynamic `import()` and its (external) import ended up at the top of `index.mjs`. With `splitting` it stays a separate file; the main file goes from 2.4 to 0.4 MB.
+- The API answered 500 instead of 401 without a password: `onError` was registered twice and also turned Hono's `HTTPException`s into errors.
+- On RDS the `uccellini` table was empty (locally the server fills it at start-up) and every event failed on the foreign key: `db:migra:aws` now fills it.
+- `db:migra:aws` created `embedding_testo` with 768 dimensions if `LLM_PROVIDER=bedrock` was missing from the shell: the script now sets it and, on an empty table, the column fixes itself.
+
+### Measured
+`npm run valuta` on the 57 labelled photos, same prompt, models on Bedrock:
+
+| | qwen3.5:9b local (0.13.0) | **Qwen3-VL 235B** | Nova 2 Lite |
 |---|---|---|---|
-| azioni (101) | 66 (65%) | **57 (56%)** | 51 (50%) |
-| acqua (36) | 15/27 (56%) | 14 (39%) | 14 (39%) |
-| cibo (31) | 28 (90%) | **29 (94%)** | 23 (74%) |
-| tempo a foto | ~40 s | ~4 s | ~3 s |
+| actions (101) | 66 (65%) | **57 (56%)** | 51 (50%) |
+| water (36) | 15/27 (56%) | 14 (39%) | 14 (39%) |
+| food (31) | 28 (90%) | **29 (94%)** | 23 (74%) |
+| time per photo | ~40 s | ~4 s | ~3 s |
 
-- Qwen3-VL: l'errore più frequente è "mangia" dove l'etichetta dice "riposa" (19 su 44), probabilmente perché l'uccellino è vicino alla mangiatoia. Nova 2 Lite vede uccellini che l'etichetta segna come non visibili (19 volte) e dice "ok" quando il cibo è da rifornire (7 su 8).
-- Acqua: errori quasi simmetrici con tutti e due i modelli, cioè tirano a indovinare. Sembra un limite dell'inquadratura più che del modello.
-- Online, `valuta --salvate` con le correzioni copiate: azioni 56/101 (55%), coerente con la misura sopra.
-- Claude Haiku 4.5 non misurato: Bedrock lo blocca finché non si compila il modulo sul caso d'uso di Anthropic.
+- Qwen3-VL: the most common error is "eating" where the label says "resting" (19 of 44), probably because the bird is next to the feeder. Nova 2 Lite sees birds that the label marks as not visible (19 times) and says "ok" when the food needs a refill (7 of 8).
+- Water: almost symmetric errors with both models, i.e. they're guessing. It looks like a framing limit more than a model limit.
+- Online, `valuta --salvate` with the copied corrections: actions 56/101 (55%), consistent with the measurement above.
+- Claude Haiku 4.5 not measured: Bedrock blocks it until the Anthropic use-case form is filled in.
 
-### Problemi noti
-- **Il confronto con il modello locale non è del tutto alla pari**: rispetto alla misura della 0.13.0 il prompt ha perso l'esempio di postura, e le etichette dell'acqua sono passate da 27 a 36. Manca un `valuta` di `qwen3.5:9b` con il prompt attuale.
-- **Le modifiche all'agente non sono ancora state misurate con `npm run chiedi`**, né in locale né con Qwen3 235B su Bedrock.
-- Su AWS il controllo della gabbia gira ogni 20 minuti come in locale: sulle foto caricate in blocco ce ne sono pochi, quindi acqua e cibo si vedono su poche foto.
-- L'SDK di AWS avvisa che dal 2027 non supporterà più Node 20: le Lambda sono già su Node 22, il Mac va aggiornato.
+### Known issues
+- **The comparison with the local model isn't fully like for like**: compared with the 0.13.0 measurement, the prompt lost the posture example, and the water labels went from 27 to 36. A `valuta` of `qwen3.5:9b` with the current prompt is missing.
+- **The agent changes haven't been measured with `npm run chiedi` yet**, neither locally nor with Qwen3 235B on Bedrock. (Done in 0.17.0 with `valuta-agente`.)
+- On AWS the cage check runs every 20 minutes as locally: photos uploaded in bulk get few checks, so water and food show on few photos.
+- The AWS SDK warns it won't support Node 20 from 2027: the Lambdas are already on Node 22, the Mac needs upgrading.
 
-## [0.13.0] — 2026-10-14 · Prompt separato per la gabbia, esperimenti CLIP e classificatori
+## [0.13.0] — 2026-10-14 · Separate prompt for the cage, CLIP and classifier experiments
 
-### Aggiunto
-- **Un prompt solo per la gabbia** (`classifyGabbia` in [src/modelli/modelli.ts](src/modelli/modelli.ts), schema `AnalisiGabbia`). Una regola sul cibo nel prompt unico aveva peggiorato le azioni (17/21 → 12/21): le regole della gabbia ora stanno in un prompt a parte, e quello delle azioni non parla più di gabbia.
-  - cibo: "da_rifornire" se **anche una sola** delle due mangiatoie è vuota o quasi;
-  - acqua: "da_rifornire" solo se nella bottiglia ce n'è **meno di 1/5** o è finita.
-- **Controllo della gabbia a tempo** ([src/foto/importazione.ts](src/foto/importazione.ts)): i livelli non cambiano in un minuto, quindi il secondo prompt (~16 s) gira ogni `GABBIA_OGNI_MIN` minuti (20) e, se l'ultimo controllo diceva "da_rifornire", di nuovo dopo `GABBIA_RICONTROLLO_MIN` (5): un avviso futuro partirà solo su un problema confermato. Conta l'ora dello scatto, quindi funziona anche importando foto vecchie. Vale per `importa` e per la pagina Live; `classify` controlla sempre.
-- Migrazione 006: `acqua` e `cibo` possono essere `NULL` (foto senza controllo), indice parziale sui controlli.
-- **Esperimenti** (solo lettura, sulle impronte CLIP già salvate):
-  - `npm run clip-zero-shot` (`-- --gabbia`): classificare con frasi in inglese, senza addestramento;
-  - `npm run classificatore` (`-- --blocco N`): k-NN e regressione logistica scritti a mano, addestrati sulle etichette della galleria, con leave-one-out e leave-one-block-out.
+### Added
+- **A prompt just for the cage** (`classifyGabbia` in [src/modelli/modelli.ts](src/modelli/modelli.ts), schema `AnalisiGabbia`). A food rule in the single prompt had made the actions worse (17/21 → 12/21): the cage rules now live in a separate prompt, and the actions prompt no longer mentions the cage.
+  - food: "da_rifornire" (needs refill) if **even one** of the two feeders is empty or nearly so;
+  - water: "da_rifornire" only if the bottle has **less than 1/5** left or is empty.
+- **Timed cage check** ([src/foto/importazione.ts](src/foto/importazione.ts)): levels don't change in a minute, so the second prompt (~16 s) runs every `GABBIA_OGNI_MIN` minutes (20) and, if the last check said "da_rifornire", again after `GABBIA_RICONTROLLO_MIN` (5): a future alert will only fire on a confirmed problem. It uses the capture time, so it also works when importing old photos. Applies to `importa` and the Live page; `classify` always checks.
+- Migration 006: `acqua` and `cibo` can be `NULL` (photos without a check), partial index on the checks.
+- **Experiments** (read-only, on the stored CLIP fingerprints):
+  - `npm run clip-zero-shot` (`-- --gabbia`): classifying with English sentences, without training;
+  - `npm run classificatore` (`-- --blocco N`): hand-written k-NN and logistic regression, trained on the gallery labels, with leave-one-out and leave-one-block-out.
 
-### Modificato
-- `classify` ha la stessa grafica di `importa` (una riga per fase con spinner, riassunto, dettagli); riassunto e nomi delle fasi in [src/foto/pipeline.ts](src/foto/pipeline.ts), condivisi.
-- `importa` mostra "gabbia non controllata" sulle foto saltate dal timer.
-- `valuta` usa i due prompt separatamente: un errore su uno non conta sull'altro.
-- Galleria: pillole e riga "Gabbia" solo sulle foto controllate.
-- Agente: `stato_gabbia` parla di controlli e dice l'ora dell'ultimo.
+### Changed
+- `classify` has the same look as `importa` (one line per phase with a spinner, summary, details); summary and phase names in [src/foto/pipeline.ts](src/foto/pipeline.ts), shared.
+- `importa` shows "cage not checked" on the photos skipped by the timer.
+- `valuta` uses the two prompts separately: an error on one doesn't count against the other.
+- Gallery: cage pills and the "Cage" row only on checked photos.
+- Agent: `stato_gabbia` talks about checks and gives the time of the last one.
 
-### Misurato
-`npm run valuta` (riclassificando, webcam nuova), ricontato con le etichette corrette dopo la misura:
+### Measured
+`npm run valuta` (re-classifying, new webcam), recounted with the labels corrected after the measurement:
 
-| | prima (previsioni salvate, prompt unico) | dopo (riclassificando, due prompt) |
+| | before (saved predictions, single prompt) | after (re-classifying, two prompts) |
 |---|---|---|
-| azioni | 82/101 (81%) | 66/101 (65%) |
-| acqua | 22/27 (81%) | 15/27 (56%) |
-| cibo | 23/31 (74%) | **28/31 (90%)** |
+| actions | 82/101 (81%) | 66/101 (65%) |
+| water | 22/27 (81%) | 15/27 (56%) |
+| food | 23/31 (74%) | **28/31 (90%)** |
 
-⚠️ Il "prima" non è una misura alla pari: sono previsioni salvate, prodotte da versioni diverse del prompt, ed etichettate partendo da quelle (le conferme tendono a dare ragione al modello). Manca un `valuta` del prompt unico sulle stesse foto per sapere quanto del calo delle azioni è reale.
+⚠️ The "before" isn't a like-for-like measurement: they are saved predictions, produced by different prompt versions, and labelled starting from them (confirmations tend to side with the model). A `valuta` of the single prompt on the same photos is missing to know how much of the drop in actions is real.
 
-Esperimenti:
-- CLIP zero-shot: azioni 28% (almeno uno dei due faceva quell'azione); acqua 73% contro 69% rispondendo sempre la classe più frequente; cibo 35% contro 68%. CLIP sulla foto intera non vede gesti né livelli.
-- Classificatori su CLIP: cibo 84% con leave-one-out, ma 52–55% togliendo le foto entro ±10 min e 19–32% entro ±20 min. Le foto consecutive sono quasi identiche: il leave-one-out semplice era gonfiato (data leakage temporale).
+Experiments:
+- CLIP zero-shot: actions 28% (at least one of the two birds was doing that action); water 73% vs 69% always answering the most frequent class; food 35% vs 68%. CLIP on the whole photo sees neither gestures nor levels.
+- Classifiers on CLIP: food 84% with leave-one-out, but 52–55% leaving out the photos within ±10 min and 19–32% within ±20 min. Consecutive photos are almost identical: the plain leave-one-out was inflated (temporal data leakage).
 
-### Problemi noti
-- Azioni: l'errore principale resta **si_pulisce invece di riposa** (×12). Nella postura il modello scrive spesso "becco tra le piume dell'ala", che è l'esempio del prompt: lo sta copiando, va tolto e rimisurato.
-- Acqua: sbaglia in tutte e due le direzioni (da_rifornire invece di ok ×5, ok invece di da_rifornire ×3, non_visibile ×4): la bottiglia trasparente dalla webcam è difficile; la regola dell'1/5 non ha aiutato.
-
----
-
-## [0.12.1] — 2026-10-14 · Codice diviso in cartelle
-
-### Modificato
-- `src/` diviso per compito: `comandi/` (un file per ogni `npm run …`), `server/`, `foto/`, `modelli/`, `agente/`, `db/`, `comune/`. Solo spostamenti (con `git mv`, la storia dei file resta): nessuna logica cambiata, i comandi `npm run …` sono gli stessi.
-- Import ricalcolati in automatico (69), percorsi verso `config/` ed `eval/`, script in `package.json`, tipi del frontend, README e CLAUDE.md aggiornati.
+### Known issues
+- Actions: the main error is still **preening instead of resting** (×12). In the posture the model often writes "beak in the wing feathers", which is the prompt's example: it's copying it, it needs removing and re-measuring.
+- Water: wrong in both directions (refill instead of ok ×5, ok instead of refill ×3, not visible ×4): the transparent bottle is hard to read from the webcam; the 1/5 rule didn't help.
 
 ---
 
-## [0.12.0] — 2026-10-14 · Ricerca per immagini, correzioni di acqua e cibo, webcam nuova
+## [0.12.1] — 2026-10-14 · Code split into folders
 
-### Aggiunto
-- **Impronte CLIP delle foto** ([src/modelli/immagini.ts](src/modelli/immagini.ts)): `Xenova/clip-vit-base-patch32` da Hugging Face con transformers.js, in Node sulla CPU, senza Ollama. 512 numeri a foto in ~30 ms, nella colonna `embedding_immagine` che esisteva dal primo schema.
-  - calcolate in automatico a ogni import; `npm run embedding-immagini` per le foto già presenti;
-  - migrazione 003: indice HNSW;
-  - `npm run cerca -- --immagini "…"` (ricerca testo → foto, in inglese) e `--simili <id>` (foto simili).
-- **Correzione di acqua e cibo in galleria**: riga "Gabbia" con due pillole; ✓ conferma, ↺ annulla. Migrazione 004: `acqua_umana`, `cibo_umano`, vista `foto_effettive`; `PATCH /api/foto/:id/gabbia`. Il valore del modello non si sovrascrive mai.
-- **`valuta` misura anche la gabbia**, sia sulle previsioni salvate (`--salvate`) sia riclassificando.
-- **`importa` con avanzamento visuale**: barra, stima del tempo, una riga per fase (conversione, visione, embedding, salvataggio, impronta) con spinner e tempi, riassunto per foto. Senza librerie ([src/comune/terminale.ts](src/comune/terminale.ts)); senza terminale, righe semplici.
+### Changed
+- `src/` split by job: `comandi/` (one file per `npm run …`), `server/`, `foto/`, `modelli/`, `agente/`, `db/`, `comune/`. Moves only (with `git mv`, file history is kept): no logic changed, the `npm run …` commands are the same.
+- Imports recomputed automatically (69), paths to `config/` and `eval/`, scripts in `package.json`, frontend types, README and CLAUDE.md updated.
 
-### Modificato
-- **Livelli della gabbia ridotti** a una decisione: acqua e cibo `ok` / `da_rifornire` / `non_visibile` (prima 5 livelli). "da_rifornire" comprende "sta finendo": l'avviso deve arrivare prima che manchi. Migrazione 005 converte i valori salvati.
-- **Pulizia della gabbia tolta** da schema, prompt, agente e interfaccia: dalle foto non si riusciva a giudicarla. Le colonne nel database restano.
-- **Webcam USB nuova**, vicina alla gabbia; foto e diario ripartiti da zero (backup del giorno prima in `data/archivio/`).
+---
 
-### Corretto
-- `valuta` saltava in errore sulle foto etichettate ma archiviate: ora le salta con un avviso.
+## [0.12.0] — 2026-10-14 · Image search, water and food corrections, new webcam
 
-### Misurato
-| | Risultato |
+### Added
+- **CLIP fingerprints of the photos** ([src/modelli/immagini.ts](src/modelli/immagini.ts)): `Xenova/clip-vit-base-patch32` from Hugging Face with transformers.js, in Node on the CPU, without Ollama. 512 numbers per photo in ~30 ms, in the `embedding_immagine` column that existed since the first schema.
+  - computed automatically on every import; `npm run embedding-immagini` for existing photos;
+  - migration 003: HNSW index;
+  - `npm run cerca -- --immagini "…"` (text → photo search, in English) and `--simili <id>` (similar photos).
+- **Water and food corrections in the gallery**: a "Cage" row with two pills; ✓ confirms, ↺ undoes. Migration 004: `acqua_umana`, `cibo_umano`, view `foto_effettive`; `PATCH /api/foto/:id/gabbia`. The model's value is never overwritten.
+- **`valuta` also measures the cage**, both on saved predictions (`--salvate`) and re-classifying.
+- **`importa` with visual progress**: bar, time estimate, one line per phase (conversion, vision, embedding, saving, fingerprint) with spinner and timings, per-photo summary. No libraries ([src/comune/terminale.ts](src/comune/terminale.ts)); without a terminal, plain lines.
+
+### Changed
+- **Cage levels reduced** to a decision: water and food `ok` / `da_rifornire` / `non_visibile` (previously 5 levels). "da_rifornire" includes "running out": the alert must come before it's empty. Migration 005 converts the stored values.
+- **Cage cleanliness removed** from schema, prompt, agent and interface: it couldn't be judged from the photos. The database columns stay.
+- **New USB webcam**, close to the cage; photos and diary restarted from scratch (previous day's backup in `data/archivio/`).
+
+### Fixed
+- `valuta` crashed on photos that were labelled but archived: it now skips them with a warning.
+
+### Measured
+| | Result |
 |---|---|
-| **Azioni**, previsioni salvate, webcam nuova (101 etichette) | **82/101 = 81%** (ieri, webcam lontana: 57%) · mangia 14/14 · si pulisce 6/6 · riposa 34/43 · gioca 5/10 |
-| **Acqua** (25 etichette) | **20/25 = 80%** |
-| **Cibo** (29 etichette) | **21/29 = 72%**: 8 errori, tutti "da rifornire" non visti |
-| Esperimento: regola delle due mangiatoie nel prompt (14 foto) | cibo 6/14 → **11/14**, ma **azioni 17/21 → 12/21** → **scartata** |
-| CLIP | ~30 ms a foto · "a yellow budgie with ruffled feathers preening" trova per prima la foto in cui Cippi si pulisce |
+| **Actions**, saved predictions, new webcam (101 labels) | **82/101 = 81%** (yesterday, far webcam: 57%) · eating 14/14 · preening 6/6 · resting 34/43 · playing 5/10 |
+| **Water** (25 labels) | **20/25 = 80%** |
+| **Food** (29 labels) | **21/29 = 72%**: 8 errors, all missed "needs refill" |
+| Experiment: two-feeders rule in the prompt (14 photos) | food 6/14 → **11/14**, but **actions 17/21 → 12/21** → **discarded** |
+| CLIP | ~30 ms per photo · "a yellow budgie with ruffled feathers preening" finds first the photo where Cippi is preening |
 
-### Problemi noti
-- **Cibo**: per l'utente è "da rifornire" se anche una sola delle due mangiatoie è vuota; il modello guarda l'insieme. La regola nel prompt unico peggiora le azioni: va risolta con un prompt separato per la gabbia (ogni 15–30 minuti) o con un classificatore sui ritagli fissi delle mangiatoie.
-- **La webcam USB si scurisce dopo un po'** (anche in Photo Booth) e torna normale solo staccandola e riattaccandola; l'esposizione non è regolabile (CameraController senza effetto). Va bene per sessioni brevi.
-- Le etichette sono state date guardando le previsioni del modello: possibile effetto "ancoraggio" che gonfia un po' le accuratezze.
-- Dopo la modifica al tool `stato_gabbia` l'agente non è stato riprovato con `npm run chiedi`.
+### Known issues
+- **Food**: for the user it's "needs refill" if even one of the two feeders is empty; the model looks at the whole. The rule in the single prompt makes the actions worse: to be solved with a separate cage prompt (every 15–30 minutes) or a classifier on fixed crops of the feeders.
+- **The USB webcam gets darker after a while** (in Photo Booth too) and only recovers by unplugging it; exposure can't be adjusted (CameraController has no effect). Fine for short sessions.
+- The labels were given while looking at the model's predictions: a possible "anchoring" effect that inflates accuracy a bit.
+- After the change to the `stato_gabbia` tool the agent wasn't re-tested with `npm run chiedi`.
 
 ---
 
-## [0.11.0] — 2026-10-14 · Agente su LangChain/LangGraph e provider via env
+## [0.11.0] — 2026-10-14 · Agent on LangChain/LangGraph and provider via env
 
-### Aggiunto
-- **Agente su LangChain + LangGraph** ([src/agente/](src/agente/)): `createAgent` costruisce il grafo modello ↔ tool al posto del ciclo `for` scritto a mano.
-  - `strumenti.ts`: i 4 tool con `tool()` e schemi Zod (l'equivalente del `@tool` di Python);
-  - `middleware.ts`: le regole come middleware. `promptDelGiorno` (system prompt con la data, a ogni chiamata), `guardrailRisposteInventate` (`wrapModelCall`: risposta con numeri senza tool → stessa chiamata con il modello "ragionante"), `argomentiPuliti` (`wrapToolCall`: via `""` e `null`, errori restituiti al modello);
-  - `index.ts`: stream di LangGraph con `streamMode: ["messages", "updates"]` tradotto negli eventi della chat. La firma di `chiediAllAgente` non cambia: server e chat non se ne accorgono.
-- **Fabbrica dei modelli** ([src/modelli/llm.ts](src/modelli/llm.ts)): `LLM_PROVIDER=ollama|bedrock` sceglie il provider per agente, visione ed embedding (`ChatOllama`/`ChatBedrockConverse`, `OllamaEmbeddings`/`BedrockEmbeddings`). Per Bedrock vanno indicati i modelli: se manca una variabile, errore chiaro.
-- **Configurazione da `.env`** ([src/comune/env.ts](src/comune/env.ts), [.env.example](.env.example)), caricato con `process.loadEnvFile()` senza librerie.
-- **Controllo degli embedding** (`controllaEmbedding`): all'avvio di server e import confronta le dimensioni del modello con la colonna `embedding_testo`, e si ferma con un messaggio chiaro se serve una migrazione.
-- Nella traccia della chat ora compare anche il **ragionamento** (🧠) quando il guardrail fa riprovare.
+### Added
+- **Agent on LangChain + LangGraph** ([src/agente/](src/agente/)): `createAgent` builds the model ↔ tool graph instead of a hand-written `for` loop.
+  - `strumenti.ts`: the 4 tools with `tool()` and Zod schemas (the equivalent of Python's `@tool`);
+  - `middleware.ts`: the rules as middleware. `promptDelGiorno` (system prompt with the date, on every call), `guardrailRisposteInventate` (`wrapModelCall`: answer with numbers but no tool → same call with the "reasoning" model), `argomentiPuliti` (`wrapToolCall`: drops `""` and `null`, errors returned to the model);
+  - `index.ts`: the LangGraph stream with `streamMode: ["messages", "updates"]` translated into chat events. The signature of `chiediAllAgente` doesn't change: server and chat don't notice.
+- **Model factory** ([src/modelli/llm.ts](src/modelli/llm.ts)): `LLM_PROVIDER=ollama|bedrock` picks the provider for agent, vision and embeddings (`ChatOllama`/`ChatBedrockConverse`, `OllamaEmbeddings`/`BedrockEmbeddings`). For Bedrock the models must be given: if a variable is missing, a clear error.
+- **Configuration from `.env`** ([src/comune/env.ts](src/comune/env.ts), [.env.example](.env.example)), loaded with `process.loadEnvFile()` without libraries.
+- **Embedding check** (`controllaEmbedding`): at server and import start-up it compares the model's dimensions with the `embedding_testo` column, and stops with a clear message if a migration is needed.
+- The chat trace now also shows the **reasoning** (🧠) when the guardrail retries.
 
-### Modificato
-- `src/ollama.ts` è diventato [src/modelli/modelli.ts](src/modelli/modelli.ts): niente più chiamate dirette a Ollama per chat ed embedding.
-- **Visione su Ollama con chiamata nativa** (un solo messaggio testo + immagine), su Bedrock con `withStructuredOutput`.
+### Changed
+- `src/ollama.ts` became [src/modelli/modelli.ts](src/modelli/modelli.ts): no more direct Ollama calls for chat and embeddings.
+- **Vision on Ollama with a native call** (one text + image message), on Bedrock with `withStructuredOutput`.
 
-### Misurato
-| | Prima | Dopo |
+### Measured
+| | Before | After |
 |---|---|---|
-| Agente, 8 domande | tool, argomenti e risposte | **identici**; guardrail sulle stesse 2 domande; tempi uguali (8–30 s) |
-| Visione, codice precedente (un messaggio), 31 foto · 60 etichette | **57%** (34/60) | — |
-| Visione via `@langchain/ollama` (due messaggi), stesse 32 etichette | 15/32 | **8/32** → scartata per Ollama |
+| Agent, 8 questions | tools, arguments and answers | **identical**; guardrail on the same 2 questions; same timings (8–30 s) |
+| Vision, previous code (one message), 31 photos · 60 labels | **57%** (34/60) | — |
+| Vision via `@langchain/ollama` (two messages), same 32 labels | 15/32 | **8/32** → discarded for Ollama |
 
-### Problemi noti
-- `@langchain/ollama` 1.3.0 spezza testo e immagine in due messaggi Ollama (`convertHumanGenericMessagesToOllama`). Nessuna segnalazione trovata: candidato a una issue upstream.
-- L'SDK AWS avvisa che le versioni pubblicate da gennaio 2027 richiederanno Node 22.
-- Webcam USB nuova ("CAMERA - UAC"): l'esposizione automatica non si lascia regolare (CameraController non ha effetto) e alcune foto escono scure.
-
----
-
-## [0.10.1] — 2026-10-13 · Changelog, CLAUDE.md e versioning
-
-### Aggiunto
-- **CHANGELOG.md**: la storia del progetto ricostruita dai commit, con i numeri di ogni esperimento (**Misurato**) e i **Problemi noti**.
-- **CLAUDE.md**: le direttive per lavorare sul repo con Claude Code. Versioning, ambiente, architettura, regole su prompt e modelli, best practice per Node e React, valutazione, checklist prima di ogni commit.
-- **Tag git** `v0.1.0` … `v0.10.0` sui commit esistenti, e da qui un tag per ogni commit.
-
-### Modificato
-- `version` di `package.json` e `web/package.json` allineata al changelog (era rimasta `0.1.0`).
+### Known issues
+- `@langchain/ollama` 1.3.0 splits text and image into two Ollama messages (`convertHumanGenericMessagesToOllama`). No report found: a candidate for an upstream issue.
+- The AWS SDK warns that versions published from January 2027 will require Node 22.
+- New USB webcam ("CAMERA - UAC"): automatic exposure can't be adjusted (CameraController has no effect) and some photos come out dark.
 
 ---
 
-## [0.10.0] — 2026-10-13 · README e avvio con un comando (`cf18cf4`)
+## [0.10.1] — 2026-10-13 · Changelog, CLAUDE.md and versioning
 
-### Aggiunto
-- **README completo**: architettura con diagrammi Mermaid, le scelte tecniche, i numeri della valutazione, le lezioni imparate e la roadmap verso AWS.
-- **`npm run dev`** ([scripts/dev.mjs](scripts/dev.mjs)): accende Postgres se è spento, avvia API e interfaccia con l'output prefissato (`[api]`, `[web]`); Ctrl+C ferma tutto, figli compresi. Node puro, senza dipendenze.
-- **`npm run valuta -- --foto NOME`**: valuta solo le foto indicate, per provare una modifica al prompt in pochi secondi.
+### Added
+- **CHANGELOG.md**: the project history reconstructed from the commits, with the numbers of every experiment (**Measured**) and the **Known issues**.
+- **CLAUDE.md**: the rules for working on the repo with Claude Code. Versioning, environment, architecture, rules on prompts and models, Node and React best practices, evaluation, pre-commit checklist.
+- **Git tags** `v0.1.0` … `v0.10.0` on the existing commits, and from here on one tag per commit.
+
+### Changed
+- `version` in `package.json` and `web/package.json` aligned with the changelog (it had stayed at `0.1.0`).
 
 ---
 
-## [0.9.0] — 2026-10-13 · Pagina Live e descrizioni più concrete (`d2744f6`)
+## [0.10.0] — 2026-10-13 · README and one-command start-up (`cf18cf4`)
 
-### Aggiunto
-- **Pagina Live**:
-  - video della webcam in diretta nel browser (`getUserMedia`), con badge LIVE, orologio e scelta della fotocamera;
-  - **Avvia / Ferma registrazione**: il server scatta ogni N secondi e analizza ogni foto **in coda**, una alla volta. Lo scatto non aspetta mai l'analisi;
-  - scatti e stato (REC, durata, scatti, analizzati, in coda) aggiornati in tempo reale via SSE con `EventSource`;
-  - ogni scatto mostra "in coda" → "il modello sta guardando…" → il risultato.
-- `POST /api/registrazione/avvia` e `/ferma`, con opzioni validate da Zod; `GET /api/scatti`, `/api/scatti/:nome/immagine`, `/api/scatti/stream`.
-- Nuovi campi nell'analisi: **`con_cosa`** (l'oggetto con cui interagisce l'uccellino) e **`pulizia`** della gabbia.
-- **Migrazione 002**: colonne `con_cosa` e `pulizia`, indice su `con_cosa`.
-- L'agente riporta gli oggetti negli episodi e la pulizia nello stato della gabbia.
-- In galleria: "con campanellino" sotto l'azione, chip 🧹 se la gabbia è sporca, dettagli completi nella foto grande.
+### Added
+- **Full README**: architecture with Mermaid diagrams, the technical choices, the evaluation numbers, the lessons learned and the roadmap to AWS.
+- **`npm run dev`** ([scripts/dev.mjs](scripts/dev.mjs)): starts Postgres if it's off, runs API and interface with prefixed output (`[api]`, `[web]`); Ctrl+C stops everything, children included. Plain Node, no dependencies.
+- **`npm run valuta -- --foto NAME`**: evaluates only the given photos, to try a prompt change in seconds.
 
-### Modificato
-- **Limiti di lunghezza** (`.max()`) su tutti i campi di testo dello schema: finiscono nella grammatica di Ollama, quindi il modello non può superarli.
-- Prompt con istruzioni più brevi e concrete per ogni campo.
-- Codice condiviso estratto in [src/foto/webcam.ts](src/foto/webcam.ts) (trovare la fotocamera, scattare) e [src/foto/importazione.ts](src/foto/importazione.ts) (importare una foto): li usano `scatta`, `importa` e la registrazione.
+---
 
-### Corretto
-- Le migrazioni ora fanno `DROP VIEW` + `CREATE VIEW`: prima, rilanciare la 001 dopo la 002 falliva ("non puoi togliere colonne a una vista").
+## [0.9.0] — 2026-10-13 · Live page and more concrete descriptions (`d2744f6`)
 
-### Misurato
-| | Prima | Dopo |
+### Added
+- **Live page**:
+  - live webcam video in the browser (`getUserMedia`), with a LIVE badge, clock and camera choice;
+  - **Start / Stop recording**: the server takes a photo every N seconds and analyses each one **in a queue**, one at a time. Capturing never waits for the analysis;
+  - photos and status (REC, duration, photos, analysed, queued) updated in real time via SSE with `EventSource`;
+  - each photo shows "queued" → "the model is looking…" → the result.
+- `POST /api/registrazione/avvia` and `/ferma`, with options validated by Zod; `GET /api/scatti`, `/api/scatti/:nome/immagine`, `/api/scatti/stream`.
+- New fields in the analysis: **`con_cosa`** (the object the bird interacts with) and the cage's **`pulizia`** (cleanliness).
+- **Migration 002**: `con_cosa` and `pulizia` columns, index on `con_cosa`.
+- The agent reports the objects in the episodes and the cleanliness in the cage status.
+- In the gallery: "with bell" under the action, a 🧹 chip if the cage is dirty, full details in the large photo.
+
+### Changed
+- **Length limits** (`.max()`) on every text field of the schema: they end up in Ollama's grammar, so the model can't exceed them.
+- Shorter, more concrete instructions for each field in the prompt.
+- Shared code extracted into [src/foto/webcam.ts](src/foto/webcam.ts) (finding the camera, taking a photo) and [src/foto/importazione.ts](src/foto/importazione.ts) (importing a photo): used by `scatta`, `importa` and the recording.
+
+### Fixed
+- Migrations now do `DROP VIEW` + `CREATE VIEW`: before, re-running 001 after 002 failed ("cannot drop columns from a view").
+
+### Measured
+| | Before | After |
 |---|---|---|
-| Accuratezza (12 foto, 24 etichette) | 63% | **38%** |
-| Token generati a foto | 424 | 363 (−14%) |
+| Accuracy (12 photos, 24 labels) | 63% | **38%** |
+| Tokens generated per photo | 424 | 363 (−14%) |
 
-### Problemi noti
-- **Il calo di accuratezza viene dagli esempi nel prompt**: "becco tra le piume dell'ala", messo come esempio di postura, viene copiato dal modello e lo spinge verso "si pulisce" o "dorme". Da sistemare togliendo gli esempi suggestivi.
-- Lo stato della registrazione vive nel processo del server: se il server si riavvia (anche in modalità watch), la registrazione si ferma.
-
----
-
-## [0.8.0] — 2026-10-13 · Correzioni dalla galleria, nuove card e header (`a0915ec`)
-
-### Aggiunto
-- **Correzioni human-in-the-loop**: per ogni uccellino un menu per correggere l'azione, ✓ per confermare, ↺ per annullare. Aggiornamento ottimistico: la card cambia subito e torna com'era se il salvataggio fallisce.
-- **Migrazione 001**: colonne `azione_umana` e `controllato_il`. La previsione del modello non viene mai sovrascritta.
-- **Vista `eventi_effettivi`**: l'azione umana se c'è, altrimenti quella del modello. Galleria, archivio e agente leggono tutti da qui.
-- `PATCH /api/eventi/:id` e `DELETE /api/eventi/:id/correzione`, che **ricalcolano l'embedding** (il suo testo contiene l'azione).
-- `npm run db:migra` per applicare le migrazioni.
-- `npm run valuta` usa anche le etichette della galleria; **`--salvate`** mostra la matrice di confusione delle previsioni salvate, l'accuratezza per azione e il confronto tra confidenza alta e bassa, senza chiamare il modello.
-- **Etichette verdi e rosse sulla foto**: verde se il modello aveva ragione, rossa se l'hai corretto.
-- **Foto grande** al click, in un `<dialog>` nativo (Esc, click fuori, ✕).
-
-### Modificato
-- **Card della galleria ridisegnate**: ombra morbida, ora e livelli di acqua e cibo come chip sulla foto, avatar colorato con l'iniziale, azione come chip con menu, barretta di confidenza, riga colorata dopo il controllo, barra "N/M controllati".
-- **Header "corporate"**: barra fissa a tutta larghezza, logo SVG (anche come favicon), navigazione a schede, indicatore di stato dell'API, font Inter.
+### Known issues
+- **The accuracy drop comes from the examples in the prompt**: "beak in the wing feathers", given as a posture example, is copied by the model and pushes it towards "preening" or "sleeping". To be fixed by removing suggestive examples.
+- The recording state lives in the server process: if the server restarts (watch mode included), the recording stops.
 
 ---
 
-## [0.7.0] — 2026-10-13 · Chat in streaming (`e4bd058`)
+## [0.8.0] — 2026-10-13 · Corrections from the gallery, new cards and header (`a0915ec`)
 
-### Aggiunto
-- **`POST /api/chat/stream`** in Server-Sent Events: ragionamento, tool e risposta arrivano al browser man mano.
-- Chiamata all'agente con `stream: true` verso Ollama (NDJSON, un pezzo per token).
-- Nella chat: **"Sto pensando…"** che pulsa insieme alla traccia, e sparisce quando arriva la prima parola della risposta.
+### Added
+- **Human-in-the-loop corrections**: for each bird a menu to correct the action, ✓ to confirm, ↺ to undo. Optimistic update: the card changes immediately and rolls back if saving fails.
+- **Migration 001**: `azione_umana` and `controllato_il` columns. The model's prediction is never overwritten.
+- **View `eventi_effettivi`**: the human action if there is one, otherwise the model's. Gallery, archive and agent all read from here.
+- `PATCH /api/eventi/:id` and `DELETE /api/eventi/:id/correzione`, which **recompute the embedding** (its text contains the action).
+- `npm run db:migra` to apply the migrations.
+- `npm run valuta` also uses the gallery labels; **`--salvate`** shows the confusion matrix of the saved predictions, per-action accuracy and high vs low confidence, without calling the model.
+- **Green and red tags on the photo**: green if the model was right, red if you corrected it.
+- **Large photo** on click, in a native `<dialog>` (Esc, click outside, ✕).
 
-### Modificato
-- La risposta va in streaming **solo dopo che è stato usato un tool**. Una risposta senza tool resta trattenuta finché il guardrail non l'ha controllata, così una risposta inventata non compare mai.
-- Lato React, ogni evento passa da un reducer puro dentro un `setState` funzionale: sicuro anche con la doppia invocazione di StrictMode.
-
----
-
-## [0.6.0] — 2026-10-13 · Traccia dell'agente (`59aea4e`)
-
-### Aggiunto
-- L'agente restituisce la **traccia** dei passaggi: 🧠 ragionamento (quando c'è), 🔧 tool con argomenti, ↳ risultato abbreviato, 🛡️ interventi del guardrail.
-- La chat la mostra in grigio sopra la risposta; `npm run chiedi` la stampa da terminale.
+### Changed
+- **Gallery cards redesigned**: soft shadow, time and water/food levels as chips on the photo, coloured avatar with the initial, action as a chip with a menu, confidence bar, coloured row after review, "N/M reviewed" bar.
+- **"Corporate" header**: full-width sticky bar, SVG logo (also as favicon), tab navigation, API status indicator, Inter font.
 
 ---
 
-## [0.5.0] — 2026-10-13 · L'agente della chat (`d14da93`)
+## [0.7.0] — 2026-10-13 · Streaming chat (`e4bd058`)
 
-### Aggiunto
-- **Agente con 4 tool**: `eventi_del_giorno`, `conta_eventi`, `cerca_momenti` (pgvector + filtri SQL: ricerca ibrida), `stato_gabbia`.
-- **Argomenti dei tool validati con Zod** prima di toccare il database; `""` e `null` vengono trattati come "non specificato".
-- **Episodi** ([src/agente/episodi.ts](src/agente/episodi.ts)): eventi consecutivi con la stessa azione diventano un solo episodio.
-- **Guardrail**: una risposta con numeri senza aver usato un tool viene scartata e la domanda ripetuta con il ragionamento acceso; se fallisce di nuovo, l'agente dice che non è riuscito a consultare il diario.
-- Chat web con la storia della conversazione (domande successive tipo "e Sky?").
-- `npm run chiedi` per interrogare l'agente da terminale.
-- `npm run importa` accetta file singoli e `--lista lista.txt`.
+### Added
+- **`POST /api/chat/stream`** with Server-Sent Events: reasoning, tools and answer reach the browser as they happen.
+- Agent call with `stream: true` to Ollama (NDJSON, one chunk per token).
+- In the chat: **"Thinking…"** pulsing together with the trace, disappearing when the first word of the answer arrives.
 
-### Modificato
-- **Agente su `qwen3.5:9b`** invece di `qwen3:4b`: quest'ultimo ha il ragionamento sempre acceso (~600 token per scegliere un tool, 45–110 secondi a domanda). Ora un solo modello in memoria fa visione e chat.
-- Il giorno nei tool è facoltativo, con oggi come default: il modello sbagliava data su domande come "c'è abbastanza acqua?".
-- `stato_gabbia` restituisce un riassunto già calcolato (`ultimo_livello_visto`, foto per livello): il modello piccolo sbagliava a dedurlo da una lista lunga.
-
-### Corretto
-- Il markdown delle risposte viene tolto nell'interfaccia invece che chiesto nel prompt: la regola "non usare markdown" aveva fatto smettere l'agente di usare i tool.
+### Changed
+- The answer is streamed **only after a tool has been used**. An answer without tools is held back until the guardrail has checked it, so a made-up answer never shows up.
+- On the React side every event goes through a pure reducer inside a functional `setState`: safe even with StrictMode's double invocation.
 
 ---
 
-## [0.4.0] — 2026-10-13 · Webcam e valutazione del classificatore (`6d01b89`)
+## [0.6.0] — 2026-10-13 · Agent trace (`59aea4e`)
 
-### Aggiunto
-- **`npm run scatta`**: una foto dalla webcam ogni N secondi con `imagesnap`, Mac tenuto sveglio con `caffeinate`. La fotocamera si sceglie per parte del nome, gestendo gli spazi speciali (`MacBook Air`).
-- **`npm run valuta`**: accuratezza del classificatore sulle foto etichettate a mano ([eval/classificazione.json](eval/classificazione.json)), anche a risoluzioni diverse (`--lato`).
-- Nel prompt, **indizi visivi** per ogni azione basati sulla posizione di testa e becco.
+### Added
+- The agent returns the **trace** of its steps: 🧠 reasoning (when present), 🔧 tools with arguments, ↳ shortened result, 🛡️ guardrail interventions.
+- The chat shows it in grey above the answer; `npm run chiedi` prints it in the terminal.
 
-### Misurato
-| Configurazione | Accuratezza (4 etichette) |
+---
+
+## [0.5.0] — 2026-10-13 · The chat agent (`d14da93`)
+
+### Added
+- **Agent with 4 tools**: `eventi_del_giorno`, `conta_eventi`, `cerca_momenti` (pgvector + SQL filters: hybrid search), `stato_gabbia`.
+- **Tool arguments validated with Zod** before touching the database; `""` and `null` are treated as "not given".
+- **Episodes** ([src/agente/episodi.ts](src/agente/episodi.ts)): consecutive events with the same action become one episode.
+- **Guardrail**: an answer with numbers but no tool call is discarded and the question repeated with reasoning on; if it fails again, the agent says it couldn't look up the diary.
+- Web chat with conversation history (follow-up questions like "and Sky?").
+- `npm run chiedi` to ask the agent from the terminal.
+- `npm run importa` accepts single files and `--lista list.txt`.
+
+### Changed
+- **Agent on `qwen3.5:9b`** instead of `qwen3:4b`: the latter always reasons (~600 tokens to choose a tool, 45–110 seconds per question). Now a single model in memory does vision and chat.
+- The day in the tools is optional, with today as default: the model got the date wrong on questions like "is there enough water?".
+- `stato_gabbia` returns a precomputed summary (`ultimo_livello_visto`, photos per level): the small model got it wrong when inferring it from a long list.
+
+### Fixed
+- Markdown in the answers is stripped in the interface instead of being forbidden in the prompt: the rule "don't use markdown" had made the agent stop using tools.
+
+---
+
+## [0.4.0] — 2026-10-13 · Webcam and classifier evaluation (`6d01b89`)
+
+### Added
+- **`npm run scatta`**: one webcam photo every N seconds with `imagesnap`, the Mac kept awake with `caffeinate`. The camera is chosen by part of its name, handling special spaces (`MacBook Air`).
+- **`npm run valuta`**: accuracy of the classifier on hand-labelled photos ([eval/classificazione.json](eval/classificazione.json)), also at different resolutions (`--lato`).
+- **Visual cues** in the prompt for each action, based on the position of head and beak.
+
+### Measured
+| Configuration | Accuracy (4 labels) |
 |---|---|
 | `qwen3.5:9b`, 1024px | 1/4 (25%) |
-| `qwen3.5:9b`, 1536px | nessun miglioramento, più lento |
-| `qwen3-vl:8b` | peggiore, ~8× più lento (loop di ripetizione, ~4000 token) |
+| `qwen3.5:9b`, 1536px | no improvement, slower |
+| `qwen3-vl:8b` | worse, ~8× slower (repetition loops, ~4000 tokens) |
 
 ---
 
-## [0.3.0] — 2026-10-13 · Import, backend e dati veri (`466aeb3`)
+## [0.3.0] — 2026-10-13 · Import, backend and real data (`466aeb3`)
 
-### Aggiunto
-- **`npm run importa`**: converte le foto di `photos/` (anche HEIC dall'iPhone) in JPG da 1024px, legge l'**ora di scatto dall'EXIF** e salta le foto già importate.
-- **API Hono**: uccellini, giorni, foto del giorno, immagini, chat (ancora solo ricerca semantica).
-- Interfaccia sui **dati veri**: galleria con un evento per uccellino e i livelli di acqua e cibo, archivio dal database. I mock sono stati tolti.
-- [eval/ricerca.json](eval/ricerca.json) e **`npm run confronta-embedding`** per confrontare modelli di embedding.
+### Added
+- **`npm run importa`**: converts the photos in `photos/` (HEIC from the iPhone too) into 1024px JPGs, reads the **capture time from EXIF** and skips photos already imported.
+- **Hono API**: birds, days, photos of the day, images, chat (semantic search only, for now).
+- Interface on **real data**: gallery with one event per bird and water/food levels, archive from the database. Mocks removed.
+- [eval/ricerca.json](eval/ricerca.json) and **`npm run confronta-embedding`** to compare embedding models.
 
-### Misurato
-| Modello di embedding | hit@1 | MRR | Tempo |
+### Measured
+| Embedding model | hit@1 | MRR | Time |
 |---|---|---|---|
-| **nomic-embed-text** (scelto) | 3/4 | 0.88 | 0.2s |
+| **nomic-embed-text** (chosen) | 3/4 | 0.88 | 0.2s |
 | bge-m3 | 3/4 | 0.88 | 1.5–7s |
 | qwen3-embedding:0.6b | 2/4 | 0.75 | 5.5s |
 
 ---
 
-## [0.2.0] — 2026-10-13 · Postgres, pgvector e due uccellini (`ea1006c`)
+## [0.2.0] — 2026-10-13 · Postgres, pgvector and two birds (`ea1006c`)
 
-### Aggiunto
-- **Postgres 17 + pgvector** in Docker; tabelle `uccellini`, `foto`, `eventi`, con `embedding_testo` (indice HNSW) e `embedding_immagine` già prevista per CLIP.
-- **Due uccellini, Cippi (giallo) e Sky (celeste)**, configurabili in [config/uccellini.json](config/uccellini.json).
-- **Stato della gabbia**: livelli di acqua e cibo, con avviso se scarsi o vuoti.
-- Embedding delle descrizioni con `nomic-embed-text` e **`npm run cerca`** per la ricerca semantica.
+### Added
+- **Postgres 17 + pgvector** in Docker; tables `uccellini`, `foto`, `eventi`, with `embedding_testo` (HNSW index) and `embedding_immagine` already planned for CLIP.
+- **Two birds, Cippi (yellow) and Sky (light blue)**, configurable in [config/uccellini.json](config/uccellini.json).
+- **Cage status**: water and food levels, with a warning when low or empty.
+- Description embeddings with `nomic-embed-text` and **`npm run cerca`** for semantic search.
 
-### Modificato
-- Lo schema produce **un evento per uccellino** invece di uno per foto.
-- **Il modello indica il colore, il nome lo assegna il codice**: prima scambiava Cippi e Sky pur vedendo bene i colori.
-- **Campi descrittivi prima di azione e confidenza**: con l'output strutturato il modello "osserva" prima di classificare.
+### Changed
+- The schema produces **one event per bird** instead of one per photo.
+- **The model gives the colour, the code assigns the name**: before, it swapped Cippi and Sky even while seeing the colours correctly.
+- **Descriptive fields before action and confidence**: with structured output the model "observes" before classifying.
 
 ---
 
-## [0.1.0] — 2026-10-13 · Primo classificatore e interfaccia (`a943bc7`)
+## [0.1.0] — 2026-10-13 · First classifier and interface (`a943bc7`)
 
-### Aggiunto
-- **Classificatore** ([src/comandi/classify.ts](src/comandi/classify.ts)): manda la foto a `qwen3.5:9b` in Ollama con output strutturato (`format` = JSON Schema generato da Zod), valida la risposta con Zod e misura i tempi (caricamento, lettura della foto, generazione).
-- Contesto alzato a 8192 token: la foto da sola ne occupava circa 4000.
-- **Interfaccia React** (Vite + React Router) con le pagine Oggi, Archivio, Configurazione (locale/AWS) e Credits, ancora su dati di prova.
+### Added
+- **Classifier** ([src/comandi/classify.ts](src/comandi/classify.ts)): sends the photo to `qwen3.5:9b` in Ollama with structured output (`format` = JSON Schema generated by Zod), validates the answer with Zod and measures the timings (loading, reading the photo, generation).
+- Context raised to 8192 tokens: the photo alone took about 4000.
+- **React interface** (Vite + React Router) with the Today, Archive, Configuration (local/AWS) and Credits pages, still on mock data.
